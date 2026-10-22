@@ -33,6 +33,7 @@ void ACTION_Scan(bool bRestart);
     void ACTION_FM(void);
 #endif
 void ACTION_SwitchDemodul(void);
+void ACTION_SwitchFilter(void);
 
 #ifdef ENABLE_FEAT_F4HWN
     void ACTION_RxMode(void);

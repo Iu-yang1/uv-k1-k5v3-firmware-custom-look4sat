@@ -20,6 +20,10 @@
 #if defined(ENABLE_FMRADIO_EMBEDDED)
     #include "app/fm.h"
 #endif
+#ifdef ENABLE_CW_MODULATOR
+	#include "app/cwkeyer.h"
+	#include "app/cwmacro.h"
+#endif
 #include "audio.h"
 #include "dcs.h"
 #include "driver/backlight.h"
@@ -41,7 +45,7 @@
 #include "settings.h"
 #include "ui/status.h"
 #include "ui/ui.h"
-
+#include "driver/uart.h"
 FUNCTION_Type_t gCurrentFunction;
 
 bool FUNCTION_IsRx()
@@ -131,6 +135,11 @@ void FUNCTION_PowerSave() {
 
     gMonitor = false;
 
+#ifdef ENABLE_CW_MODULATOR
+    AUDIO_AudioPathOff();
+    gEnableSpeaker = false;
+#endif
+
     BK4819_DisableVox();
     BK4819_Sleep();
 
@@ -190,7 +199,9 @@ void FUNCTION_Transmit()
 #ifdef ENABLE_FEAT_F4HWN
     BK4819_DisableScramble();
 #else
-    if (gCurrentVfo->SCRAMBLING_TYPE > 0 && gSetting_ScrambleEnable)
+    if (gCurrentVfo->SCRAMBLING_TYPE > 0 && gSetting_ScrambleEnable
+        && gCurrentVfo->Modulation != MODULATION_USB
+        && gCurrentVfo->Modulation != MODULATION_CW)
         BK4819_EnableScramble(gCurrentVfo->SCRAMBLING_TYPE - 1);
     else
         BK4819_DisableScramble();
@@ -201,7 +212,43 @@ void FUNCTION_Transmit()
     }
 }
 
+#ifdef ENABLE_CW_MODULATOR
 
+void FUNCTION_Transmit_CW()
+{
+	// Mark CW TX in progress and clear suspend counter
+	gCW_State = CW_TRANSMITTING;
+	gCW_SuspendCounter_1ms = 0;
+
+	gUpdateStatus = true;
+
+	AUDIO_AudioPathOn();  // briand TODO revisit for audio pops
+	GUI_DisplayScreen();
+
+	// if DTMF is enabled when TX'ing, it changes the TX audio filtering !! .. 1of11
+	BK4819_DisableDTMF();
+
+	// removed all the DTMF calling code, not needed for CW
+
+	RADIO_SetTxParameters();
+	// turn the Green LED off
+	BK4819_ToggleGpioOut(BK4819_GPIO6_PIN2_GREEN, false);
+
+	BK4819_DisableScramble();
+	if (gSetting_backlight_on_tx_rx & BACKLIGHT_ON_TR_TX) {
+		BACKLIGHT_TurnOn();
+	}
+
+	// Don't send AF to RF during CW
+	BK4819_EnterTxMute();
+
+	CW_ApplySidetoneGain();
+	BK4819_SetAF(BK4819_AF_ALAM);
+
+	gEnableSpeaker = true;
+	RADIO_CW_BeginResume();
+}
+#endif
 
 void FUNCTION_Select(FUNCTION_Type_t Function)
 {
@@ -250,11 +297,22 @@ void FUNCTION_Select(FUNCTION_Type_t Function)
             return;
 
         case FUNCTION_TRANSMIT:
-            FUNCTION_Transmit();
+				#ifdef ENABLE_CW_MODULATOR
+				if (gTxVfo->Modulation == MODULATION_CW)
+					FUNCTION_Transmit_CW();
+				else
+				#endif
+		            FUNCTION_Transmit();
             break;
 
         case FUNCTION_MONITOR:
-            gMonitor = true;
+			#ifdef ENABLE_CW_MODULATOR
+				if (!gMonitorTemp)
+					gMonitor = true;
+				gMonitorTemp = false;
+			#else
+	            gMonitor = true;
+			#endif
             break;
 
         case FUNCTION_INCOMING:
@@ -276,8 +334,18 @@ void FUNCTION_Select(FUNCTION_Type_t Function)
     }
 
     if (Function == FUNCTION_TRANSMIT) {
-        FUNCTION_Transmit();
+				#ifdef ENABLE_CW_MODULATOR
+				if (gCurrentVfo->Modulation == MODULATION_CW)
+					FUNCTION_Transmit_CW();
+				else
+				#endif
+                    FUNCTION_Transmit();
     } else if (Function == FUNCTION_MONITOR) {
+        // gMonitorTemp was previously set in HandleIncoming() to force monitor
+        // mode for CW/USB regardless of the user's gMonitor state. That logic
+        // has been removed — gMonitor is now the sole state keeper. Always set
+        // gMonitor=true here: we only reach FUNCTION_MONITOR when the user or
+        // the VFO-configure path explicitly wants open squelch.
         gMonitor = true;
     }
 

@@ -24,6 +24,10 @@
     #include "app/fm.h"
 #endif
 #include "app/uart.h"
+#ifdef ENABLE_L4S_CONTROL
+#include "app/l4s_control.h"
+static uint16_t l4s_uart_size, l4s_vcp_size;
+#endif
 #ifdef ENABLE_AIRCOPY_UART
 #include "app/aircopy.h"
 #endif
@@ -354,12 +358,13 @@ void UART_SendAircopy(const uint16_t *data, uint8_t words)
 
 static void SendVersion(uint32_t Port)
 {
-    REPLY_0514_t Reply;
+    REPLY_0514_t Reply = {0};
 
     Reply.Data.Padding[0] = Reply.Data.Padding[1] = 0;
     Reply.Header.ID = 0x0515;
     Reply.Header.Size = sizeof(Reply.Data);
-    strncpy(Reply.Data.Version, Version, sizeof(Reply.Data.Version));
+    for (unsigned i=0;i+1<sizeof(Reply.Data.Version) && Version[i];i++)
+        Reply.Data.Version[i]=Version[i];
     Reply.Data.bHasCustomAesKey = bHasCustomAesKey;
     Reply.Data.bIsInLockScreen = bIsInLockScreen;
     Reply.Data.Challenge[0] = gChallenge[0];
@@ -815,6 +820,9 @@ bool UART_IsCommandAvailable(uint32_t Port)
 
     if ((Size + 8u) > ReadBufSize)
     {
+#ifdef ENABLE_L4S_CONTROL
+        if(Port==UART_PORT_VCP&&L4S_Active())L4S_RecordLinkError(false);
+#endif
         *pReadPointer = DmaLength;
         return false;
     }
@@ -827,6 +835,9 @@ bool UART_IsCommandAvailable(uint32_t Port)
 
     if (ReadBuf[TailIndex] != 0xDC || ReadBuf[DMA_INDEX(TailIndex, 1, ReadBufSize)] != 0xBA)
     {
+#ifdef ENABLE_L4S_CONTROL
+        if(Port==UART_PORT_VCP&&L4S_Active())L4S_RecordLinkError(false);
+#endif
         *pReadPointer = DmaLength;
         return false;
     }
@@ -868,9 +879,15 @@ bool UART_IsCommandAvailable(uint32_t Port)
 
     Crc = pUART_Command->Buffer[Size] | (pUART_Command->Buffer[Size + 1] << 8);
 
-    return Size >= sizeof(Header_t) &&
-           pUART_Command->Header.Size <= Size - sizeof(Header_t) &&
-           CRC_Calculate(pUART_Command->Buffer, Size) == Crc;
+#ifdef ENABLE_L4S_CONTROL
+    if (Port == UART_PORT_VCP) l4s_vcp_size=Size;
+    else l4s_uart_size=Size;
+#endif
+    bool crc_ok=CRC_Calculate(pUART_Command->Buffer, Size)==Crc;
+#ifdef ENABLE_L4S_CONTROL
+    if(!crc_ok&&Port==UART_PORT_VCP&&L4S_Active())L4S_RecordLinkError(true);
+#endif
+    return Size >= sizeof(Header_t) && pUART_Command->Header.Size <= Size - sizeof(Header_t) && crc_ok;
 }
 
 #ifdef ENABLE_FEAT_F4HWN_MULTIBOOT
@@ -913,6 +930,10 @@ void UART_HandleCommand(uint32_t Port)
         return;
     }
 
+#ifdef ENABLE_L4S_CONTROL
+    if (L4S_HandleUart(Port,pUART_Command->Buffer,
+        Port == UART_PORT_VCP ? l4s_vcp_size : l4s_uart_size)) return;
+#endif
     switch (pUART_Command->Header.ID)
     {
 #ifdef ENABLE_AIRCOPY_UART
@@ -1406,6 +1427,23 @@ void UART_HandleCommand(uint32_t Port)
         gUART_LockK5Viewer = 20; // lock the K5Viewer stream
     #endif
 }
+
+#if defined(ENABLE_UART)
+// Resynchronize the hardware-UART command parser with a freshly re-initialized
+// DMA channel. UART_Init() rebuilds DMA1 channel 2, which restarts the write
+// position at 0, but gUART_WriteIndex (the read position) is static and would
+// otherwise still point into the middle of the previous session's bytes. Stale
+// bytes above the reset write position can contain an 0xAB 0xCD pair, and the
+// "CommandLength < (Size + 8)" path in UART_IsCommandAvailable() returns without
+// resyncing the pointer - so the parser parks on the bogus frame and ignores
+// real traffic landing at index 0. Call this whenever UART_Init() is re-run
+// after boot (e.g. handing PA10 back from the CW port-ground mode).
+void UART_ResetRxParser(void)
+{
+    gUART_WriteIndex = 0;
+    memset(UART_DMA_Buffer, 0, sizeof(UART_DMA_Buffer));
+}
+#endif
 
 void UART_ServiceCommands(void)
 {

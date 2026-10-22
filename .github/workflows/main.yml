@@ -1,8 +1,12 @@
-name: Build Firmware
+name: Build Firmware and Modules
 
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -10,12 +14,16 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
-    - name: Compile firmware
+    - name: Build firmware and overlays
       run: |
         chmod +x compile-firmware.sh compile-app.sh
-        ./compile-firmware.sh All
+        for preset in Fusion Transfer FieldOps Labs L4S; do
+          ./compile-firmware.sh "$preset"
+        done
         ./compile-app.sh All
 
     - name: Upload artifacts

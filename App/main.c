@@ -24,6 +24,9 @@
     #include "app/rxtx_log.h"
 #endif
 #include "misc.h"
+#ifdef ENABLE_L4S_CONTROL
+#include "app/l4s_control.h"
+#endif
 #include "radio.h"
 #include "settings.h"
 #include "version.h"
@@ -44,6 +47,10 @@
 
 #include "app/app.h"
 #include "app/dtmf.h"
+#ifdef ENABLE_CW_MODULATOR
+	#include "app/cwapp.h"
+	#include "app/cwkeyer.h"
+#endif
 
 #include "driver/backlight.h"
 #include "driver/bk4819.h"
@@ -61,6 +68,11 @@
 #ifdef ENABLE_USB
 #include "driver/vcp.h"
 #endif
+
+#if defined(ENABLE_CW_MODULATOR) || defined(ENABLE_LPTIM)
+    #include "driver/millis.h"
+#endif
+
 #include "helper/battery.h"
 #include "helper/boot.h"
 
@@ -103,6 +115,9 @@ void Main(void)
 #endif
 #ifdef ENABLE_USB
     VCP_Init();
+#endif
+#if defined(ENABLE_CW_MODULATOR) || defined(ENABLE_LPTIM)
+    millis_init();
 #endif
 
     // Not implementing authentic device checks
@@ -217,6 +232,39 @@ void Main(void)
         gKeyReading1 = KEY_INVALID;
         gDebounceCounter = 0;
     }
+
+#ifdef ENABLE_CW_MODULATOR
+    if(gF_LOCK)  // handkey mode at startup if in hidden menu tech mode
+    {
+        gEeprom.CW_KEY_INPUT = CW_KEY_INPUT_HANDKEY;
+		gEeprom.CW_KEY_INPUT_MENU = 0;
+		gRequestSaveSettings = true;
+		CW_KeyerReconfigure(true);  // Force keyer to reinitialize with handkey mode
+    }
+	// Check CW keyer inputs at startup - if stuck, fall back to handkey mode
+	else if (!CW_CheckKeyerInputs(gEeprom.CW_KEY_INPUT)) {
+		gEeprom.CW_KEY_INPUT = CW_KEY_INPUT_HANDKEY;
+		gEeprom.CW_KEY_INPUT_MENU = 0;
+		gRequestSaveSettings = true;
+		CW_KeyerReconfigure(true);  // Force keyer to reinitialize with handkey mode
+
+		// Stuck keys detected - warn user and disable input mode
+		UI_DisplayReleasePaddle();
+		BACKLIGHT_TurnOn();
+
+		for (int i = 0; i < 200; i++) {  // 200 iterations * 10ms = 2 seconds
+			// A button was pressed, stop showing the message
+			if (KEYBOARD_Poll() != KEY_INVALID) {
+				break;
+			}
+			boot_counter_10ms++;
+			SYSTEM_DelayMs(10);
+		}
+		gKeyReading0 = KEY_INVALID;
+		gKeyReading1 = KEY_INVALID;
+		gDebounceCounter = 0;
+	}
+#endif
 
     if (!gChargingWithTypeC && gBatteryDisplayLevel == 0)
     {
@@ -337,9 +385,21 @@ void Main(void)
                 break;
         }
     #endif
-        
+
     while (true) {
+#ifdef ENABLE_L4S_CONTROL
+        L4S_ControlTick();
+#endif
         APP_Update();
+
+#ifdef ENABLE_CW_MODULATOR
+        static uint32_t s_last_millis = 0;
+        const uint32_t current_millis = millis();
+        if (millis_since(s_last_millis) > 0) {
+            s_last_millis = current_millis;
+            CW_AppUpdate();
+        }
+#endif
 
         if (gNextTimeslice) {
 

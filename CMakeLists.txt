@@ -38,16 +38,23 @@ endif()
 
 if(ENABLE_FEAT_F4HWN)
     if(NOT AUTHOR_STRING_1)
-        set(AUTHOR_STRING_1 "EGZUMER")
+        set(AUTHOR_STRING_1 "EGZUMER-F4HWN")
     endif()
     if(NOT AUTHOR_STRING_2)
-        set(AUTHOR_STRING_2 "F4HWN")
+        set(AUTHOR_STRING_2 "NR7Y")
     endif()
     if(NOT VERSION_STRING_1)
         set(VERSION_STRING_1 "v0.22")
     endif()
     if(NOT VERSION_STRING_2)
-        set(VERSION_STRING_2 "v4.2")
+        set(VERSION_STRING_2 "${BUILD_COMMIT}")
+    endif()
+    # VERSION_STRING_2 is stored in a 16-byte EEPROM field. Truncate to 15 chars
+    # (leaving room for the null terminator) to prevent flash sector corruption.
+    string(LENGTH "${VERSION_STRING_2}" _ver2_len)
+    if(_ver2_len GREATER 15)
+        string(SUBSTRING "${VERSION_STRING_2}" 0 15 VERSION_STRING_2)
+        message(WARNING "VERSION_STRING_2 truncated to 15 characters: '${VERSION_STRING_2}'")
     endif()
     if(NOT EDITION_STRING)
         set(EDITION_STRING "Custom")
@@ -118,6 +125,14 @@ if(ENABLE_LTO)
     target_compile_options(${EXE_NAME} PRIVATE -flto=auto)
 endif()
 
+if(ENABLE_L4S_CONTROL)
+    target_compile_options(${EXE_NAME} PRIVATE -Oz)
+endif()
+
+if(ENABLE_LTO AND ENABLE_FEAT_F4HWN_MULTIBOOT_OVERLAY)
+    set_source_files_properties(App/driver/mb_flash.c PROPERTIES COMPILE_OPTIONS "-fno-lto")
+endif()
+
 # Generate map file
 target_link_options(${EXE_NAME} PRIVATE "-Wl,-Map=${EXE_NAME}.map")
 
@@ -183,6 +198,14 @@ add_custom_command(
     POST_BUILD
     COMMAND ${CMAKE_OBJCOPY} -O ihex ${EXE_NAME}.elf ${EXE_NAME}.hex
     COMMENT "Generating .hex file"
+)
+
+# Generate .uf2 file (requires python available in build container)
+add_custom_command(
+    TARGET ${EXE_NAME}
+    POST_BUILD
+    COMMAND python ${CMAKE_SOURCE_DIR}/tools/UF2/uf2conv.py -c -b 0x08002800 -o ${EXE_NAME}.uf2 ${EXE_NAME}.bin
+    COMMENT "Generating .uf2 file"
 )
 
 # Pack

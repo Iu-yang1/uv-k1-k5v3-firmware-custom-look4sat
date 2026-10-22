@@ -101,6 +101,14 @@ enable_feature(ENABLE_UART
     # driver/aes.c
 )
 
+if(ENABLE_L4S_CONTROL)
+    if(NOT ENABLE_USB OR NOT ENABLE_FEAT_NR7Y_CW)
+        message(FATAL_ERROR "L4S control requires USB CDC and the NR7Y CW engine")
+    endif()
+    target_compile_definitions(App INTERFACE ENABLE_L4S_CONTROL)
+    target_sources(App INTERFACE app/l4s_control.c app/l4s_protocol.c app/l4s_rssi.c app/l4s_io.c app/l4s_settings.c app/l4s_store.c app/l4s_macros.c ui/l4s.c)
+endif()
+
 if(ENABLE_USB)
     target_link_libraries(App INTERFACE CherryUSB)
     target_compile_definitions(App INTERFACE ENABLE_USB)
@@ -167,6 +175,7 @@ enable_feature(ENABLE_CUSTOM_MENU_LAYOUT)
 enable_feature(ENABLE_KEEP_MEM_NAME)
 enable_feature(ENABLE_WIDE_RX)
 enable_feature(ENABLE_F_CAL_MENU)
+enable_feature(ENABLE_EXTRA_FILTER)
 enable_feature(ENABLE_CTCSS_TAIL_PHASE_SHIFT)
 enable_feature(ENABLE_BOOT_BEEPS)
 enable_feature(ENABLE_SHOW_CHARGE_LEVEL)
@@ -181,6 +190,41 @@ enable_feature(ENABLE_COPY_CHAN_TO_VFO)
 enable_feature(ENABLE_REDUCE_LOW_MID_TX_POWER)
 enable_feature(ENABLE_BYP_RAW_DEMODULATORS)
 enable_feature(ENABLE_SCAN_RANGES)
+
+# ---- NR7Y / CW Features ----
+# CW modulator sources and timer
+enable_feature(ENABLE_FEAT_NR7Y_CW
+    app/cwapp.c
+    app/cwkeyer.c
+    app/cwhardware.c
+    app/cwmacro.c
+    app/cwrit.c
+    app/cwpopup.c
+    app/cwguard.c
+)
+
+# Code practice (requires CW)
+enable_feature(ENABLE_FEAT_NR7Y_CPO
+    app/cpo.c
+    app/cpocall.c
+    ui/cpo.c
+)
+# Millis support
+enable_feature(ENABLE_MILLIS
+    driver/millis.c
+)
+
+if(ENABLE_FEAT_NR7Y_CW)
+    target_compile_definitions(App INTERFACE ENABLE_CW_MODULATOR)
+endif()
+
+if(ENABLE_FEAT_NR7Y_CPO)
+    target_compile_definitions(App INTERFACE ENABLE_CODE_PRACTICE)
+endif()
+
+if(ENABLE_MILLIS OR ENABLE_FEAT_NR7Y_CW)
+    target_compile_definitions(App INTERFACE ENABLE_MILLIS)
+endif()
 
 # ---- CONTRIB MODS ----
 

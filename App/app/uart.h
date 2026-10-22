@@ -31,6 +31,10 @@ enum
 #endif
 };
 
+#if defined(ENABLE_UART)
+void UART_ResetRxParser(void);
+#endif
+
 bool UART_IsCommandAvailable(uint32_t Port);
 void UART_HandleCommand(uint32_t Port);
 void UART_ServiceCommands(void);

@@ -25,6 +25,9 @@
 #include "driver/bk4819.h"
 #include "driver/py25q16.h"
 #include "misc.h"
+#ifdef ENABLE_L4S_CONTROL
+#include "app/l4s_control.h"
+#endif
 #include "settings.h"
 #include "ui/menu.h"
 
@@ -49,6 +52,27 @@ static void SETTINGS_LoadEepromDtmf(uint32_t addr, char *dest, size_t size, cons
     }
 }
 
+#ifdef ENABLE_CW_MODULATOR
+// CWvol is stored in bits 4-7 of CW byte 0 as a code, not as the menu level. Codes 1-6
+// held levels 1-6 of the old 6-level curve, so they stand for the new levels with the
+// same loudness (see CW_ApplySidetoneGain) and an upgraded radio keeps its sidetone.
+// The other codes hold the levels the old curve didn't have.
+// The CHIRP driver carries the same table.
+static const uint8_t s_cw_sidetone_code_to_level[16] = {
+    0, 6, 11, 12, 13, 14, 15,       // 0 = off, 1-6 = old levels 1-6
+    1, 2, 3, 4, 5, 7, 8, 9, 10,     // new levels
+};
+
+static uint8_t CWSidetoneLevelToCode(uint8_t level)
+{
+    for (uint8_t code = 0; code < 16; code++) {
+        if (s_cw_sidetone_code_to_level[code] == level)
+            return code;
+    }
+    return 0;  // not reached: the menu keeps the level in 0-15
+}
+#endif
+
 #ifdef ENABLE_FEAT_F4HWN_MULTIBOOT_HOT_CFG
 void SETTINGS_InitEEPROM(bool preserve_display_mode)
 #else
@@ -57,10 +81,40 @@ void SETTINGS_InitEEPROM(void)
 {
     uint8_t Data[16] = {0};
 
+#ifdef ENABLE_CW_MODULATOR
+    //
+    // EEPROM schema check. Deliberately separate from the version-string check
+    // below: that one fires on any version change and resets locks, inversion
+    // and logo lines, which is a different question with a different trigger.
+    // This one must fire exactly once per upgrade, because the migration it
+    // guards is not idempotent.
+    //
+    {
+        uint8_t schema = 0;
+        PY25Q16_ReadBuffer(EEPROM_SCHEMA_ADDR, &schema, 1);
+
+        // Erased flash means pre-v1.4, which never wrote this byte. Normalise
+        // first: 0xFF is 255, so an unnormalised value compares as "newer".
+        if (schema == 0xFF)
+            schema = EEPROM_SCHEMA_CURRENT;
+
+        if (schema < EEPROM_SCHEMA_CURRENT)
+        {
+            SETTINGS_MigrateFilterSchema();
+
+            schema = EEPROM_SCHEMA_CURRENT;
+            PY25Q16_WriteBuffer(EEPROM_SCHEMA_ADDR, &schema, 1, false);
+        }
+        // schema > EEPROM_SCHEMA_CURRENT: written by a newer firmware whose
+        // layout we do not know. Leave the channel data alone rather than
+        // migrating it onto an older meaning.
+    }
+#endif
+
     //
     // Version check
     // Read stored version from EEPROM and compare with VERSION_STRING_2
-    // 
+    //
     {
         char storedVersion[16] = {0};
         PY25Q16_ReadBuffer(0x00A160, storedVersion, sizeof(storedVersion));
@@ -71,8 +125,12 @@ void SETTINGS_InitEEPROM(void)
             // Different version: new install or firmware update
 
             // 1. Write new version to EEPROM
+            // Use sizeof(newVersion) - 1 to always leave room for null terminator.
+            // VERSION_STRING_2 > 15 chars can corrupt the flash sector (the write
+            // programs the full 4K sector and an unterminated string leaves garbage
+            // in adjacent bytes that aliases onto other settings on re-read).
             char newVersion[16] = {0};
-            strncpy(newVersion, VERSION_STRING_2, sizeof(newVersion));
+            strncpy(newVersion, VERSION_STRING_2, sizeof(newVersion) - 1);
             PY25Q16_WriteBuffer(0x00A160, newVersion, sizeof(newVersion), false);
 
             // 2. Reset sensitive parameters (MENU_LOCK, etc.)
@@ -111,7 +169,7 @@ void SETTINGS_InitEEPROM(void)
 
             for (int line = 0; line < 2; line++) {
                 int offset = line * 16;
-                
+
                 for (int i = 0; i < 16; i++) {
                     char c = bootMessageLines[offset + i];
                     if (c == 0) {
@@ -168,7 +226,11 @@ void SETTINGS_InitEEPROM(void)
     #ifdef ENABLE_FEAT_F4HWN_RESCUE_OPS
         gEeprom.MENU_LOCK = (Data[4] & 0x02) != 0;
         gEeprom.SET_KEY = ((Data[4] >> 2) & 0x0F) > 4 ? 0 : (Data[4] >> 2) & 0x0F;
+    #else
+        gEeprom.KEY_LOCK             = (Data[4] <  2) ? Data[4] : false;
     #endif
+    // SET_NAV (bit 6) is independent of ENABLE_FEAT_F4HWN_RESCUE_OPS
+    gEeprom.SET_NAV = (Data[4] & 0x40) != 0;
     #ifdef ENABLE_VOX
         gEeprom.VOX_SWITCH       = (Data[5] <  2) ? Data[5] : false;
         gEeprom.VOX_LEVEL        = (Data[6] < 10) ? Data[6] : 1;
@@ -206,7 +268,7 @@ void SETTINGS_InitEEPROM(void)
     #endif
 
     // 0E80..0E87
-    /*    
+    /*
     PY25Q16_ReadBuffer(0x00A010, Data, 8);
     gEeprom.ScreenChannel[0]   = IS_VALID_CHANNEL(Data[0]) ? Data[0] : (FREQ_CHANNEL_FIRST + BAND6_400MHz);
     gEeprom.ScreenChannel[1]   = IS_VALID_CHANNEL(Data[3]) ? Data[3] : (FREQ_CHANNEL_FIRST + BAND6_400MHz);
@@ -254,10 +316,10 @@ gEeprom.FreqChannel[1]   = IS_FREQ_CHANNEL(Data16[5]) ? Data16[5] : (FREQ_CHANNE
 
         uint16_t freqLoLimit = BK1080_GetFreqLoLimit(gEeprom.FM_Band);
 
-        gEeprom.FM_SelectedFrequency = 
-            (fmCfg.selFreq >= freqLoLimit && fmCfg.selFreq <= BK1080_GetFreqHiLimit(gEeprom.FM_Band)) ? 
+        gEeprom.FM_SelectedFrequency =
+            (fmCfg.selFreq >= freqLoLimit && fmCfg.selFreq <= BK1080_GetFreqHiLimit(gEeprom.FM_Band)) ?
                 fmCfg.selFreq : freqLoLimit;
-            
+
         gEeprom.FM_SelectedChannel = fmCfg.selChn;
         gEeprom.FM_IsMrMode        = fmCfg.isMrMode;
     }
@@ -270,11 +332,11 @@ gEeprom.FreqChannel[1]   = IS_FREQ_CHANNEL(Data16[5]) ? Data16[5] : (FREQ_CHANNE
     // 0E90..0E97
     PY25Q16_ReadBuffer(0x00A0A8, Data, 8);
     gEeprom.BEEP_CONTROL                 = Data[0] & 1;
-    gEeprom.KEY_M_LONG_PRESS_ACTION      = ((Data[0] >> 1) < ACTION_OPT_LEN) ? (Data[0] >> 1) : ACTION_OPT_NONE;
-    gEeprom.KEY_1_SHORT_PRESS_ACTION     = (Data[1] < ACTION_OPT_LEN) ? Data[1] : ACTION_OPT_MONITOR;
-    gEeprom.KEY_1_LONG_PRESS_ACTION      = (Data[2] < ACTION_OPT_LEN) ? Data[2] : ACTION_OPT_NONE;
-    gEeprom.KEY_2_SHORT_PRESS_ACTION     = (Data[3] < ACTION_OPT_LEN) ? Data[3] : ACTION_OPT_SCAN;
-    gEeprom.KEY_2_LONG_PRESS_ACTION      = (Data[4] < ACTION_OPT_LEN) ? Data[4] : ACTION_OPT_NONE;
+    gEeprom.KEY_M_LONG_PRESS_ACTION      = ((Data[0] >> 1) < ACTION_OPT_LEN) ? (Data[0] >> 1) : KEY_M_LONG_DEFAULT;
+    gEeprom.KEY_1_SHORT_PRESS_ACTION     = (Data[1] < ACTION_OPT_LEN) ? Data[1] : KEY_1_SHORT_DEFAULT;
+    gEeprom.KEY_1_LONG_PRESS_ACTION      = (Data[2] < ACTION_OPT_LEN) ? Data[2] : KEY_1_LONG_DEFAULT;
+    gEeprom.KEY_2_SHORT_PRESS_ACTION     = (Data[3] < ACTION_OPT_LEN) ? Data[3] : KEY_2_SHORT_DEFAULT;
+    gEeprom.KEY_2_LONG_PRESS_ACTION      = (Data[4] < ACTION_OPT_LEN) ? Data[4] : KEY_2_LONG_DEFAULT;
     gEeprom.SCAN_RESUME_MODE             = (Data[5] < 105)            ? Data[5] : 14;
     gEeprom.AUTO_KEYPAD_LOCK             = (Data[6] < 41)             ? Data[6] : 0;
 #ifdef ENABLE_FEAT_F4HWN
@@ -380,6 +442,38 @@ gEeprom.FreqChannel[1]   = IS_FREQ_CHANNEL(Data16[5]) ? Data16[5] : (FREQ_CHANNE
     } else {
         gEeprom.SCAN_LIST_MIX_MASK = SCAN_LIST_MIX_MASK_ALL;
     }
+#ifdef ENABLE_CW_MODULATOR
+	// 0F20..0F27
+	PY25Q16_ReadBuffer(0x00A140, Data, 8);
+	gEeprom.CW_TONE_FREQUENCY = Data[0] == 0xff ? 60 : 45 + (Data[0] & 0xf) * 5;  // Same as gMenuSelection: 50 Hz steps from 450, default 600
+	gEeprom.CW_SIDETONE_LEVEL = Data[0] == 0xff ? CW_SIDETONE_LEVEL_DEFAULT : s_cw_sidetone_code_to_level[Data[0] >> 4];  // menu level 0-15 (0=off), stored as a code in bits 4-7; see CW_ApplySidetoneGain for the applied gain curve
+	gEeprom.CW_KEY_WPM        = ((Data[1] & 0x7f) <= 45 && (Data[1] & 0x7f) >= 10) ? Data[1] & 0x7f : 18;  // bits 0-6, valid range 10-45, default 18 WPM
+	// Data[4]: keyer mode in bits 0-1, copy practice effective speed in bits 2-7 (0 = off).
+	// 0xFF = not yet written (old layout packed mode into bit 7 of Data[1]). Carry-over:
+	// read legacy bit if Data[1] is valid, then always write the new byte on next save.
+	// Blank EEPROM (Data[1]==0xFF) defaults to mode B.
+	const uint8_t farnsworth_wpm = Data[4] >> 2;
+	if (farnsworth_wpm == 0 || (farnsworth_wpm >= CW_FARNSWORTH_WPM_MIN && farnsworth_wpm < 45)) {
+		gEeprom.CW_KEYER_MODE = (CW_IambicMode_t)(Data[4] & 0x03);
+		gEeprom.CW_FARNSWORTH_WPM = farnsworth_wpm;
+	} else {
+		// 0xFF or out of range (pre-1.0 betas kept an ADC byte here): migrate from old
+		// bit-7 layout, always default to B
+		gEeprom.CW_KEYER_MODE = CW_IAMBIC_MODE_B;
+		gEeprom.CW_FARNSWORTH_WPM = 0;
+	}
+	gEeprom.CW_KEY_INPUT_MENU      = (Data[2] < 0x80) ? MIN((Data[2] & 0x0F), 10) : 0;  // bits 0-3, range 0-10, default HANDKEY
+	gEeprom.CW_KEY_INPUT 	  = CW_KEY_INPUT_menu_to_bitmap[gEeprom.CW_KEY_INPUT_MENU];
+	gEeprom.CW_BREAKIN_ENABLE	  = (Data[2] < 0x80) ? ((Data[2] >> 6) & 0x01) : 1;  // bit 6: 0=break-in off, 1=break-in on, default on
+	gEeprom.CW_FARNSWORTH_AUTO	  = (Data[2] < 0x80) && (Data[2] & 0x20);  // bit 5: copy practice auto spacing, default off
+	// Data[3]: high bit = invalid, bits 0-6 = repeat delay (seconds)
+	gEeprom.CW_MESSAGE_REPEAT_DELAY = (Data[3] < 0x80) ? (Data[3] & 0x7F) : 4;  // default 4s
+	// Data[5]: proper roger dah length in dits. 0xFF (unused since v1.0.0) or out of range = default
+	gEeprom.CW_ROGER_DAH_DITS = (Data[5] >= CW_ROGER_DAH_DITS_MIN && Data[5] <= CW_ROGER_DAH_DITS_MAX) ? Data[5] : CW_ROGER_DAH_DITS_DEFAULT;
+	// Data[7]: break-in hang time in 10 ms units. 0xFF (unused since v1.0.0) or out of range = 300 ms.
+	// Byte 6 is skipped on purpose: pre-1.0 betas kept an ADC low byte there that reads as a valid time.
+	gEeprom.CW_HANG_10MS = (Data[7] >= CW_HANG_10MS_MIN && Data[7] <= CW_HANG_10MS_MAX) ? Data[7] : CW_HANG_10MS_DEFAULT;
+#endif
 
     // 0F40..0F47
     PY25Q16_ReadBuffer(0x00A150, Data, 8);
@@ -444,7 +538,7 @@ gEeprom.FreqChannel[1]   = IS_FREQ_CHANNEL(Data16[5]) ? Data16[5] : (FREQ_CHANNE
     // Load and check channel
     for (uint16_t i = 0; i < MR_CHANNELS_MAX + 7; i++) {
         ChannelAttributes_t *att = MR_GetChannelAttributes(i);
-        
+
         if (att != NULL) {
             if (att->__val == 0xFFFF) {
                 att->__val = 0;
@@ -526,7 +620,7 @@ gEeprom.FreqChannel[1]   = IS_FREQ_CHANNEL(Data16[5]) ? Data16[5] : (FREQ_CHANNE
 
         gSetting_set_tmr = Data[4] & 0x01;
 #ifdef ENABLE_FEAT_F4HWN_SLEEP
-        gSetting_set_off = (Data[4] >> 1) > 120 ? 60 : (Data[4] >> 1); 
+        gSetting_set_off = (Data[4] >> 1) > 120 ? 60 : (Data[4] >> 1);
 #endif
 
         // And set special session settings for actions
@@ -815,7 +909,7 @@ void SETTINGS_FactoryReset(bool bIsAll)
     for (uint32_t addr = 0x000000; addr <= 0x009000; addr += 0x1000) {
         PY25Q16_SectorErase(addr);
     }
-    
+
     // 0d60 - 0e30
     if (bIsAll)
     {
@@ -861,7 +955,7 @@ void SETTINGS_FactoryReset(bool bIsAll)
         gEeprom.MrChannel[1]     = MR_CHANNEL_FIRST;
         gEeprom.FreqChannel[0]   = FREQ_CHANNEL_FIRST + BAND3_137MHz;
         gEeprom.FreqChannel[1]   = FREQ_CHANNEL_FIRST + BAND6_400MHz;
-        
+
         SETTINGS_SaveChannel(FREQ_CHANNEL_FIRST + BAND3_137MHz, 0, &gEeprom.VfoInfo[0], 2);
         SETTINGS_SaveChannel(FREQ_CHANNEL_FIRST + BAND6_400MHz, 1, &gEeprom.VfoInfo[1], 2);
 
@@ -901,15 +995,21 @@ void SETTINGS_SaveFM(void)
 
 void SETTINGS_SaveVfoIndices(void)
 {
+#ifdef ENABLE_L4S_CONTROL
+    if (L4S_Active()) return;
+#endif
     gVfoStateChanged = true;
     gVfoSaveCountdown_10ms = 2;
 }
 
 void SETTINGS_SaveVfoIndicesFlush(void)
 {
+#ifdef ENABLE_L4S_CONTROL
+    if (L4S_Active()) return;
+#endif
     if (gScheduleVfoSave) {
         gScheduleVfoSave = false;
-        
+
         if (gVfoStateChanged) {
             gVfoStateChanged = false;
             uint16_t Data16[8];
@@ -937,6 +1037,9 @@ void SETTINGS_SaveVfoIndicesFlush(void)
 
 void SETTINGS_SaveSettings(void)
 {
+#ifdef ENABLE_L4S_CONTROL
+    if (L4S_Active()) return;
+#endif
     uint8_t *State;
     uint8_t tmp = 0;
     uint8_t SecBuf[0x50];
@@ -968,8 +1071,7 @@ void SETTINGS_SaveSettings(void)
         State[4] =
             (gEeprom.KEY_LOCK        ? 0x01 : 0) |
             (gEeprom.MENU_LOCK       ? 0x02 : 0) |
-            ((gEeprom.SET_KEY & 0x0F) << 2)      |
-            (gEeprom.SET_NAV  ? 0x40 : 0);
+            ((gEeprom.SET_KEY & 0x0F) << 2);
     #else
         // A non-RescueOps preset owns KEY_LOCK and SET_NAV. Preserve the
         // RescueOps-only MENU_LOCK and SET_KEY fields plus the reserved bit.
@@ -978,6 +1080,8 @@ void SETTINGS_SaveSettings(void)
                    (gEeprom.KEY_LOCK ? 0x01u : 0u) |
                    (gEeprom.SET_NAV ? 0x40u : 0u);
     #endif
+    // SET_NAV (bit 6) is independent of ENABLE_FEAT_F4HWN_RESCUE_OPS
+    State[4] |= (gEeprom.SET_NAV ? 0x40 : 0);
 
     #ifdef ENABLE_VOX
         State[5] = gEeprom.VOX_SWITCH;
@@ -1118,6 +1222,21 @@ void SETTINGS_SaveSettings(void)
 
     PY25Q16_WriteBuffer(0x00A130, SecBuf, 0x08, false);
 
+#ifdef ENABLE_CW_MODULATOR
+    memset(SecBuf, 0xff, 8);
+    State = SecBuf;
+
+	State[0] = (gEeprom.CW_TONE_FREQUENCY - 45) / 5 | (CWSidetoneLevelToCode(gEeprom.CW_SIDETONE_LEVEL) << 4);
+	State[1] = gEeprom.CW_KEY_WPM & 0x7F;  // WPM in bits 0-6; keyer mode moved to State[4]
+	State[2] = (gEeprom.CW_KEY_INPUT_MENU & 0x1F) | (gEeprom.CW_FARNSWORTH_AUTO << 5) | ((gEeprom.CW_BREAKIN_ENABLE & 0x01) << 6);  // key input in bits 0-4, auto spacing bit 5, breakin bit 6
+	// State[3]: store menu value (delay/2) in bits 0-6, clear high bit to mark valid
+	State[3] = (gEeprom.CW_MESSAGE_REPEAT_DELAY) & 0x7F;
+	State[4] = (uint8_t)gEeprom.CW_KEYER_MODE | (gEeprom.CW_FARNSWORTH_WPM << 2);  // keyer mode (0=A, 1=B, 2=Ultimatic, 3=Bug) in bits 0-1, effective speed in bits 2-7
+	State[5] = gEeprom.CW_ROGER_DAH_DITS;  // proper roger dah length in dits
+	// State[6] stays 0xFF: unused (was CW_ADC_CABLE_20K low)
+	State[7] = gEeprom.CW_HANG_10MS;  // break-in hang time in 10 ms units
+    PY25Q16_WriteBuffer(0x00A140, SecBuf, 0x08, false);
+#endif
     // ---------------------
     // 0f40 - 0f48
 
@@ -1182,7 +1301,7 @@ void SETTINGS_SaveSettings(void)
         tmp = tmp | (1 << 3);
     */
 
-#ifdef ENABLE_FEAT_F4HWN_SLEEP 
+#ifdef ENABLE_FEAT_F4HWN_SLEEP
     State[4] = (gSetting_set_off << 1) | (gSetting_set_tmr & 0x01);
 #else
     State[4] = gSetting_set_tmr ? (1 << 0) : 0;
@@ -1227,6 +1346,9 @@ void SETTINGS_SaveSettings(void)
 
 void SETTINGS_SaveChannel(uint16_t Channel, uint8_t VFO, const VFO_Info_t *pVFO, uint8_t Mode)
 {
+#ifdef ENABLE_L4S_CONTROL
+    if (L4S_Active()) return;
+#endif
 #ifdef ENABLE_NOAA
     if (IS_NOAA_CHANNEL(Channel))
         return;
@@ -1246,7 +1368,7 @@ void SETTINGS_SaveChannel(uint16_t Channel, uint8_t VFO, const VFO_Info_t *pVFO,
             uint8_t _8[8];
             uint32_t _32[2];
         } State_t;
-        
+
         State_t *State;
 
         uint8_t Buf[0x10];
@@ -1261,10 +1383,10 @@ void SETTINGS_SaveChannel(uint16_t Channel, uint8_t VFO, const VFO_Info_t *pVFO,
         State -> _8[2] = (pVFO->freq_config_TX.CodeType << 4) | pVFO->freq_config_RX.CodeType;
         State -> _8[3] = (pVFO->Modulation << 4) | pVFO->TX_OFFSET_FREQUENCY_DIRECTION;
         State -> _8[4] = 0
-            | (pVFO->TX_LOCK << 6)
+            | ((pVFO->TX_LOCK & 1u)    << 6)
             | (pVFO->BUSY_CHANNEL_LOCK << 5)
             | (pVFO->OUTPUT_POWER      << 2)
-            | (pVFO->CHANNEL_BANDWIDTH << 1)
+            | ((pVFO->CHANNEL_BANDWIDTH & 1u) << 1)
             | (pVFO->FrequencyReverse  << 0);
         State -> _8[5] = ((pVFO->DTMF_PTT_ID_TX_MODE & 7u) << 1)
 #ifdef ENABLE_DTMF_CALLING
@@ -1313,6 +1435,9 @@ void SETTINGS_SaveChannelName(uint16_t channel, const char * name)
 
 void SETTINGS_UpdateChannel(uint16_t channel, const VFO_Info_t *pVFO, bool keep)
 {
+#ifdef ENABLE_L4S_CONTROL
+    if (L4S_Active()) return;
+#endif
 #ifdef ENABLE_NOAA
     if (IS_NOAA_CHANNEL(channel))
         return;
@@ -1337,6 +1462,71 @@ void SETTINGS_UpdateChannel(uint16_t channel, const VFO_Info_t *pVFO, bool keep)
 
     if (IS_MR_CHANNEL(channel) && !keep)
         SETTINGS_SaveChannelName(channel, "");
+}
+
+void SETTINGS_WriteBuildOptions(void)
+{
+    uint8_t State[8];
+
+#ifdef ENABLE_FEAT_F4HWN
+    // 0x1FF0
+    PY25Q16_ReadBuffer(0x00A158, State, sizeof(State));
+#endif
+
+State[0] = 0
+#ifdef ENABLE_FMRADIO
+    | (1 << 0)
+#endif
+#ifdef ENABLE_NOAA
+    | (1 << 1)
+#endif
+#ifdef ENABLE_VOICE
+    | (1 << 2)
+#endif
+#ifdef ENABLE_VOX
+    | (1 << 3)
+#endif
+#ifdef ENABLE_ALARM
+    | (1 << 4)
+#endif
+#ifdef ENABLE_TX1750
+    | (1 << 5)
+#endif
+#ifdef ENABLE_PWRON_PASSWORD
+    | (1 << 6)
+#endif
+#ifdef ENABLE_DTMF_CALLING
+    | (1 << 7)
+#endif
+;
+
+State[1] = 0
+#ifdef ENABLE_FLASHLIGHT
+    | (1 << 0)
+#endif
+#ifdef ENABLE_WIDE_RX
+    | (1 << 1)
+#endif
+#ifdef ENABLE_BYP_RAW_DEMODULATORS
+    | (1 << 2)
+#endif
+#ifdef ENABLE_FEAT_F4HWN_GAME
+    | (1 << 3)
+#endif
+#ifdef ENABLE_AM_FIX
+    | (1 << 4)
+#endif
+#ifdef ENABLE_SPECTRUM
+    | (1 << 5)
+#endif
+#ifdef ENABLE_FEAT_F4HWN_RESCUE_OPS
+    | (1 << 6)
+#endif
+#ifdef ENABLE_CW_MODULATOR
+	| (1 << 7)
+#endif
+;
+    PY25Q16_WriteBuffer(0x00A158, State, sizeof(State), false);
 }
 
 #ifdef ENABLE_FEAT_F4HWN_RESUME_STATE
@@ -1383,6 +1573,82 @@ void SETTINGS_UpdateChannel(uint16_t channel, const VFO_Info_t *pVFO, bool keep)
 
 #ifdef ENABLE_FEAT_F4HWN
 
+#ifdef ENABLE_CW_MODULATOR
+// ---- Schema 1 -> 2 migration ----
+//
+// Schema 1 packed the CW/USB filter across two bits, because bit 6 was borrowed
+// from TX_LOCK to mean NARROWEST:
+//
+//     WIDE       bit1 0  bit6 0
+//     NARROW     bit1 1  bit6 0
+//     NARROWEST  bit1 1  bit6 1
+//
+// Schema 2 keeps the filter in bit 1 alone (0 = 6.25k, 1 = 2.0k) and gives bit 6
+// back to TX_LOCK. Mapping new_bit1 = old_bit6 preserves every distinction that
+// mattered: an explicit 2k stays 2k, and WIDE and NARROW - both 12.5k or wider,
+// neither offered any more - fold together onto 6.25k. Setting bit 6 on the way
+// through gives these records the safe TX_LOCK default they could never hold.
+//
+// NOT idempotent: run twice, every record ends at bit1 = 1. The schema byte is
+// what guarantees it runs once. See EEPROM_SCHEMA_* in settings.h.
+static void MigrateFlagsRegion(uint32_t base, uint32_t bytes)
+{
+    #define CHANNEL_SIZE  16
+    #define MOD_OFFSET    11   // modulation << 4 | offset direction
+    #define FLAGS_OFFSET  12
+    #define MIGRATE_BATCH 512
+
+    uint8_t Buf[MIGRATE_BATCH];
+
+    for (uint32_t off = 0; off < bytes; off += MIGRATE_BATCH)
+    {
+        const uint32_t span = (bytes - off < MIGRATE_BATCH) ? (bytes - off) : MIGRATE_BATCH;
+        bool dirty = false;
+
+        PY25Q16_ReadBuffer(base + off, Buf, span);
+
+        for (uint32_t ch = 0; ch + CHANNEL_SIZE <= span; ch += CHANNEL_SIZE)
+        {
+            // An erased record is all 0xFF, so its modulation nibble is 0xF and
+            // matches neither - erased channels need no special case.
+            const uint8_t mod = Buf[ch + MOD_OFFSET] >> 4;
+            if (mod != MODULATION_CW && mod != MODULATION_USB)
+                continue;
+
+            const uint8_t old_flags     = Buf[ch + FLAGS_OFFSET];
+            const uint8_t was_narrowest = (old_flags >> 6) & 1u;
+            uint8_t       flags         = old_flags;
+
+            flags &= (uint8_t)~(1u << 1);              // clear the filter bit
+            flags |= (uint8_t)(was_narrowest << 1);    // 2k survives, else 6.25k
+            flags |= (uint8_t)(1u << 6);               // TX_LOCK back on
+
+            if (flags != old_flags)
+            {
+                Buf[ch + FLAGS_OFFSET] = flags;
+                dirty = true;
+            }
+        }
+
+        // Most radios have far fewer than 1024 CW channels; skipping untouched
+        // batches turns a guaranteed 32 sector programs into a handful.
+        if (dirty)
+            PY25Q16_WriteBuffer(base + off, Buf, span, false);
+    }
+
+    #undef CHANNEL_SIZE
+    #undef MOD_OFFSET
+    #undef FLAGS_OFFSET
+    #undef MIGRATE_BATCH
+}
+
+void SETTINGS_MigrateFilterSchema(void)
+{
+    MigrateFlagsRegion(0x000000, MR_CHANNELS_MAX * 16);  // 0x0000 - 0x3FFF
+    MigrateFlagsRegion(0x009000, 14 * 16);               // 0x9000 - 0x90DF, 7 bands x 2 VFOs
+}
+#endif // ENABLE_CW_MODULATOR
+
 void SETTINGS_ResetTxLock(void)
 {
     // This is an expensive operation: full scan of all MR channels
@@ -1411,6 +1677,20 @@ void SETTINGS_ResetTxLock(void)
         }
 
         PY25Q16_WriteBuffer(Offset, Buf, BatchSize, false);
+    }
+
+    // The VFO band slots live outside the MR channel region and were previously
+    // missed entirely, which is why F Lock DISABLE ALL never gated frequency
+    // mode. 14 records: 7 bands x 2 VFOs, same 16-byte layout.
+    {
+        uint8_t VfoBuf[14 * CHANNEL_SIZE];
+
+        PY25Q16_ReadBuffer(0x009000, VfoBuf, sizeof(VfoBuf));
+
+        for (uint32_t ch = 0; ch < 14; ch++)
+            VfoBuf[(ch * CHANNEL_SIZE) + TXLOCK_BYTE_OFFSET] |= (1 << TXLOCK_BIT);
+
+        PY25Q16_WriteBuffer(0x009000, VfoBuf, sizeof(VfoBuf), false);
     }
 
     RADIO_ConfigureChannel(0, VFO_CONFIGURE_RELOAD);

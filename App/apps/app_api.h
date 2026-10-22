@@ -45,7 +45,11 @@
  *      idivmod, uidivmod (the resident division helpers), Labs system info,
  *      current and minimum-since-boot free stack/RAM margin */
 #define APP_ABI_MAJOR  1u
+#if defined(ENABLE_L4S_CONTROL) || defined(ENABLE_L4S_APP_ABI)
+#define APP_API_LEVEL  3u
+#else
 #define APP_API_LEVEL  2u
+#endif
 
 /* Minimum API level of an app that ships read-only assets (pack_app.py). */
 #define APP_API_ASSETS 2u
@@ -281,11 +285,19 @@ typedef struct app_api {
     uint32_t (*sys_stack_free_now)(void);
     uint32_t (*sys_stack_free_min)(void);
 #endif
+#if defined(ENABLE_L4S_CONTROL) || defined(ENABLE_L4S_APP_ABI)
+    /* Fork API level 3: enqueue a native page after the overlay has returned. */
+    bool (*l4s_request_page)(uint8_t page); /* 0 satellite, 1 code practice; never keys TX */
+#endif
 } app_api_t;
 
 #ifdef ENABLE_FEAT_F4HWN_OVERLAY_INFO
+#if defined(ENABLE_L4S_CONTROL) || defined(ENABLE_L4S_APP_ABI)
+_Static_assert(sizeof(app_api_t) == 332u, "L4S must append, never change the API level 2 prefix");
+#else
 _Static_assert(sizeof(app_api_t) == 328u,
                "Labs system information must add exactly 52 API bytes");
+#endif
 #endif
 
 /* BK4819 AF modes for set_af (mirror driver/bk4819.h values). */

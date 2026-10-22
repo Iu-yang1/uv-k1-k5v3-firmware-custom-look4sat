@@ -42,6 +42,9 @@
     #include "app/rxtx_log.h"
 #endif
 #include "app/scanner.h"
+#ifdef ENABLE_CW_MODULATOR
+    #include "app/cwapp.h"
+#endif
 #if defined(ENABLE_UART) || defined(ENABLE_USB)
     #include "app/uart.h"
     #include "scheduler.h"
@@ -67,6 +70,9 @@
 #include "functions.h"
 #include "helper/battery.h"
 #include "misc.h"
+#ifdef ENABLE_L4S_CONTROL
+#include "app/l4s_control.h"
+#endif
 #include "radio.h"
 #include "settings.h"
 
@@ -80,6 +86,12 @@
 #include "ui/menu.h"
 #include "ui/status.h"
 #include "ui/ui.h"
+#ifdef ENABLE_CW_MODULATOR
+#include "app/cwkeyer.h"
+#endif
+#ifdef ENABLE_CODE_PRACTICE
+#include "app/cpo.h"
+#endif
 #include "ui/welcome.h"
 
 #ifdef ENABLE_FEAT_F4HWN_K5VIEWER
@@ -90,6 +102,7 @@
 static void FullWatchPromoteCurrentBackground(void);
 #endif
 
+#include "driver/uart.h"
 static bool flagSaveVfo;
 static bool flagSaveSettings;
 static bool flagSaveChannel;
@@ -114,6 +127,13 @@ void (*const ProcessKeysFunctions[])(KEY_Code_t Key, bool bKeyPressed, bool bKey
     [DISPLAY_MAIN] = &MAIN_ProcessKeys,
     [DISPLAY_MENU] = &MENU_ProcessKeys,
     [DISPLAY_SCANNER] = &SCANNER_ProcessKeys,
+#ifdef ENABLE_L4S_CONTROL
+    [DISPLAY_L4S] = &L4S_ProcessKeys,
+#endif
+
+#ifdef ENABLE_CODE_PRACTICE
+	[DISPLAY_CPO] = &CPO_ProcessKeys,
+#endif
 
 #ifdef ENABLE_FMRADIO_EMBEDDED
     [DISPLAY_FM] = &FM_ProcessKeys,
@@ -144,7 +164,7 @@ static uint8_t ScreenSaverRandom(void)
 static void ScreenSaverSetPixel(uint8_t x, uint8_t y, bool fill)
 {
     const uint8_t pattern = 1u << (y & 7u);
-    
+
     uint8_t *target = (y < 8) ? &gStatusLine[x] : &gFrameBuffer[(y >> 3) - 1][x];
 
     if (fill)
@@ -468,6 +488,21 @@ static void HandleIncoming(void)
         if (gDTMF_RX_index > 0)
             DTMF_clear_RX();
 #endif
+#ifdef ENABLE_CW_MODULATOR
+        // Unlike FM/AM, BK4819_AF_BASEBAND2 (used for CW/USB) isn't
+        // internally gated by the hardware squelch comparator the way
+        // AF_FM/AF_AM are - the chip keeps outputting audio regardless of
+        // squelch state. Rather than toggle BK4819's own AF mux (which the
+        // RSSI-based squelch detector may depend on staying in BASEBAND2 -
+        // unconfirmed, and toggling it was the cause of the previous
+        // "squelch never opens" bug), silence the physical speaker amp
+        // instead - the same mechanism already proven pop-free for CW/USB
+        // in the power-save fix. Skip while gMonitor forces squelch open.
+        if (!gMonitor && (gRxVfo->Modulation == MODULATION_CW || gRxVfo->Modulation == MODULATION_USB)) {
+            AUDIO_AudioPathOff();
+            gEnableSpeaker = false;
+        }
+#endif
         if (gCurrentFunction != FUNCTION_FOREGROUND) {
             FUNCTION_Select(FUNCTION_FOREGROUND);
             gUpdateDisplay = true;
@@ -527,6 +562,11 @@ static void HandleIncoming(void)
         return;
 #endif
 
+    // Use gMonitor as the sole source of truth. For CW/USB, gMonitor is set
+    // to true by default (open squelch) when the VFO is configured, but the
+    // user can toggle it off via ACTION_Monitor() to activate hardware squelch.
+    // Do NOT override gMonitor here based on modulation — that prevented the
+    // user's explicit "squelch on" choice from ever taking effect in CW/SSB.
     APP_StartListening(gMonitor ? FUNCTION_MONITOR : FUNCTION_RECEIVE);
 }
 
@@ -803,9 +843,6 @@ void APP_StartListening(FUNCTION_Type_t function)
     // clear the other vfo's rssi level (to hide the antenna symbol)
     gVFO_RSSI_bar_level[!vfo] = 0;
 
-    AUDIO_AudioPathOn();
-    gEnableSpeaker = true;
-
     if (gSetting_backlight_on_tx_rx & BACKLIGHT_ON_TR_RX) {
         BACKLIGHT_TurnOn();
     }
@@ -858,6 +895,11 @@ void APP_StartListening(FUNCTION_Type_t function)
 #endif
         RADIO_SetModulation(gRxVfo->Modulation);  // no need, set it now
 
+    // Enable PA after BK4819 is in the correct AF mode, so any REG_47
+    // transient from RADIO_SetModulation has settled before the amp turns on.
+    AUDIO_AudioPathOn();
+    gEnableSpeaker = true;
+
     FUNCTION_Select(function);
 
 #ifdef ENABLE_FEAT_F4HWN_RXTX_LOG
@@ -870,7 +912,11 @@ void APP_StartListening(FUNCTION_Type_t function)
     if (function == FUNCTION_MONITOR)
 #endif
     {   // squelch is disabled
-        if (gScreenToDisplay != DISPLAY_MENU)     // 1of11 .. don't close the menu
+        if (gScreenToDisplay != DISPLAY_MENU
+#ifdef ENABLE_L4S_CONTROL
+            && !L4S_Active() // Opening satellite RX audio must not navigate away from its page/menu.
+#endif
+        )
             GUI_SelectNextDisplay(DISPLAY_MAIN);
     }
     else
@@ -1126,6 +1172,11 @@ static void CheckRadioInterrupts(void)
     if (SCANNER_IsScanning())
         return;
 
+	#ifdef ENABLE_CW_MODULATOR
+		if (gCW_CpoActive || CW_LocalSidetoneHeld() || ( gCurrentFunction == FUNCTION_TRANSMIT && gTxVfo->Modulation == MODULATION_CW))
+			return;  // no interrupts during CW TX, the local sidetone or CPO app
+	#endif
+
     while (BK4819_ReadRegister(BK4819_REG_0C) & 1u) { // BK chip interrupt request
         // clear interrupts
         BK4819_WriteRegister(BK4819_REG_02, 0);
@@ -1163,7 +1214,7 @@ static void CheckRadioInterrupts(void)
 //      if (ctcss_shift > 0)
 //          g_CTCSS_Lost = true;
 
-        if (interrupts.dtmf5ToneFound) {    
+        if (interrupts.dtmf5ToneFound) {
             const char c = DTMF_GetCharacter(BK4819_GetDTMF_5TONE_Code()); // save the RX'ed DTMF character
             if (c != 0xff) {
                 if (gCurrentFunction != FUNCTION_TRANSMIT) {
@@ -1189,7 +1240,7 @@ static void CheckRadioInterrupts(void)
                         gDTMF_RX[gDTMF_RX_index]   = 0;
                         gDTMF_RX_timeout           = DTMF_RX_timeout_500ms;  // time till we delete it
                         gDTMF_RX_pending           = true;
-                        
+
                         SYSTEM_DelayMs(3);//fix DTMF not reply@Yurisu
                         DTMF_HandleRequest();
                     }
@@ -1447,8 +1498,8 @@ void APP_Update(void)
         gBlinkCounter++;
 
         if(
-            (gSetting_set_tot == 3 && gEeprom.BACKLIGHT_TIME != 0 && gBlinkCounter > 74000) || 
-            (gSetting_set_tot == 3 && gEeprom.BACKLIGHT_TIME == 0 && gBlinkCounter > 79000) || 
+            (gSetting_set_tot == 3 && gEeprom.BACKLIGHT_TIME != 0 && gBlinkCounter > 74000) ||
+            (gSetting_set_tot == 3 && gEeprom.BACKLIGHT_TIME == 0 && gBlinkCounter > 79000) ||
             (gSetting_set_tot != 3 && gBlinkCounter > 76000)
             ) // try to calibrate 10 times
         {
@@ -1464,9 +1515,9 @@ void APP_Update(void)
     }
 #endif
 
-    if (gCurrentFunction == FUNCTION_TRANSMIT && (gTxTimeoutReached || SerialConfigInProgress()))
-    {   // transmitter timed out or must de-key
-        gTxTimeoutReached = false;
+	if (gCurrentFunction == FUNCTION_TRANSMIT && (gTxTimeoutReached || SerialConfigInProgress()))
+	{	// transmitter timed out or must de-key
+		gTxTimeoutReached = false;
 
 #ifdef ENABLE_FEAT_F4HWN
         if(gBacklightCountdown_500ms > 0 || gEeprom.BACKLIGHT_TIME == 61)
@@ -1509,10 +1560,14 @@ void APP_Update(void)
     }
 
     if (gReducedService)
+    {
         return;
+    }
 
-    if (gCurrentFunction != FUNCTION_TRANSMIT)
-        HandleFunction();
+	if (gCurrentFunction != FUNCTION_TRANSMIT)
+    {
+		HandleFunction();
+    }
 
 #ifdef ENABLE_FMRADIO_EMBEDDED
 //  if (gFmRadioCountdown_500ms > 0)
@@ -1553,6 +1608,14 @@ void APP_Update(void)
         && gScanStateDir == SCAN_OFF
         && !gPttIsPressed
         && gCurrentFunction != FUNCTION_POWER_SAVE
+#ifdef ENABLE_CW_MODULATOR
+        // In CW/SSB monitor mode the user is intentionally listening to one
+        // channel.  Suppressing dual watch here prevents DualwatchAlternate
+        // from calling RADIO_SetupRegisters and closing the audio path, which
+        // would manifest as BK flashing and lost audio on every DW cycle.
+        && !(gMonitor && (gRxVfo->Modulation == MODULATION_CW ||
+                          gRxVfo->Modulation == MODULATION_USB))
+#endif
 #ifdef ENABLE_FEAT_F4HWN_BEAM
         && !gBeamActive
 #endif
@@ -1627,8 +1690,23 @@ void APP_Update(void)
         {
             BK4819_Conditional_RX_TurnOn_and_GPIO6_Enable();
 
+            // Drain any interrupt latched while RX was powering back up from
+            // sleep (AGC/RSSI settling can trip a spurious SQUELCH_LOST).
+            // Mirrors the flush RADIO_SetupRegisters does before re-arming
+            // squelch, which is why dual watch (always goes through
+            // RADIO_SetupRegisters via DualwatchAlternate on every wake)
+            // doesn't see this glitch but a plain wake here did. REG_3F
+            // (interrupt enable) isn't touched by sleep/wake, so if a real
+            // signal is still present the BK4819 will immediately re-latch
+            // a fresh SQUELCH_LOST once we're done draining - nothing real
+            // gets missed.
+            while (BK4819_ReadRegister(BK4819_REG_0C) & 1u) {
+                BK4819_WriteRegister(BK4819_REG_02, 0);
+                SYSTEM_DelayMs(1);
+            }
+
 #ifdef ENABLE_VOX
-            if (gEeprom.VOX_SWITCH)
+            if (gEeprom.VOX_SWITCH && gCurrentVfo->Modulation == MODULATION_FM)
                 BK4819_EnableVox(gEeprom.VOX1_THRESHOLD, gEeprom.VOX0_THRESHOLD);
 #endif
 
@@ -1716,6 +1794,14 @@ void CheckKeys(void)
 #endif
 
 // -------------------- PTT ------------------------
+#ifdef ENABLE_CW_MODULATOR
+    if (!gCW_KeyerManagesPtt
+#ifdef ENABLE_L4S_CONTROL
+        && !L4S_BlockPhysicalPtt()
+#endif
+    )   // CW keyer or L4S session owns PTT while active
+    {
+#endif
     const bool serialConfigInProgress = SerialConfigInProgress();
 
 #ifdef ENABLE_FEAT_F4HWN
@@ -1743,29 +1829,29 @@ void CheckKeys(void)
             if (++gPttDebounceCounter >= 3)
             {
                 gPttDebounceCounter = 0;
-                
+
                 if (gPttOnePushCounter == 0)
                 {   // start transmitting
                     boot_counter_10ms   = 0;
                     gPttIsPressed       = true;
                     gPttOnePushCounter = 1;
                     ProcessKey(KEY_PTT, true, false);
-                } 
+                }
                 else if (gPttOnePushCounter == 3)
                 {   // stop transmitting
                     StopTransmitting();
                     gPttOnePushCounter = 0;
-                } 
+                }
                 else
                     gPttOnePushCounter++;
             }
-        } 
+        }
         else
             gPttDebounceCounter = 0;
 
         //gDebug = gPttOnePushCounter;
-    } 
-    else 
+    }
+    else
 #endif
     {
         if (gPttIsPressed)
@@ -1777,8 +1863,8 @@ void CheckKeys(void)
                     gPttDebounceCounter = 0;
                     StopTransmitting();
                 }
-            } 
-            else 
+            }
+            else
                 gPttDebounceCounter = 0;
         }
         else if (isPressed)
@@ -1794,6 +1880,9 @@ void CheckKeys(void)
         else
             gPttDebounceCounter = 0;
     }
+#ifdef ENABLE_CW_MODULATOR
+    } // !gCW_KeyerManagesPtt
+#endif
 
 // --------------------- OTHER KEYS ----------------------------
 
@@ -1885,6 +1974,16 @@ void APP_TimeSlice10ms(void)
     }
 #endif
 
+#ifdef ENABLE_CW_MODULATOR
+    CW_TimeSlice10ms();
+#endif
+
+#ifdef ENABLE_CODE_PRACTICE
+	if (gCW_CpoActive) {
+		CPO_Tick();
+	}
+#endif
+
     if (gReducedService)
         return;
 
@@ -1900,7 +1999,11 @@ void APP_TimeSlice10ms(void)
 #endif
 
 
-    if (gCurrentFunction == FUNCTION_TRANSMIT)
+    if (gCurrentFunction == FUNCTION_TRANSMIT
+#ifdef ENABLE_CW_MODULATOR
+		&& gCurrentVfo->Modulation != MODULATION_CW
+#endif
+	)
     {   // transmitting
 #if defined(ENABLE_AUDIO_BAR) && !defined(ENABLE_FEAT_F4HWN_AUDIO_SCOPE)
         if (gSetting_mic_bar && (gFlashLightBlinkCounter % (150 / 10)) == 0) // once every 150ms
@@ -1962,6 +2065,24 @@ void APP_TimeSlice10ms(void)
     }
     #endif
 
+#ifdef ENABLE_CW_MODULATOR
+    // One-shot boot trigger: open the audio path for CW/SSB monitor mode without
+    // waiting for a key event.  The gFlagReconfigureVfos path only runs inside
+    // ProcessKey (key events), so an explicit trigger here is needed at boot.
+    // We wait until after the display has drawn (we are past GUI_DisplayScreen)
+    // to avoid the lockup glitch that occurred when calling this before the
+    // main loop.  The static flag ensures this fires exactly once per power-on.
+    {
+        static bool s_boot_monitor_triggered = false;
+        if (!s_boot_monitor_triggered && gMonitor &&
+            gCurrentFunction != FUNCTION_MONITOR && !gReducedService)
+        {
+            s_boot_monitor_triggered = true;
+            ACTION_Monitor();
+        }
+    }
+#endif
+
     // Skipping authentic device checks
 
 #ifdef ENABLE_FMRADIO_EMBEDDED
@@ -1998,7 +2119,7 @@ void APP_TimeSlice10ms(void)
 
 #ifdef ENABLE_FMRADIO_EMBEDDED
     if (gFmRadioMode && gFM_RestoreCountdown_10ms > 0) {
-        if (--gFM_RestoreCountdown_10ms == 0) { 
+        if (--gFM_RestoreCountdown_10ms == 0) {
             FM_Start(); // switch back to FM radio mode
             GUI_SelectNextDisplay(DISPLAY_FM);
         }
@@ -2119,9 +2240,17 @@ void APP_TimeSlice500ms(void)
         }
     }
 
-    if (gMenuCountdown > 0)
+    if (gMenuCountdown > 0) {
+#ifdef ENABLE_CW_MODULATOR
+		// Don't timeout if recording CW macro
+		if (gCW_Recording) {
+			gMenuCountdown = menu_timeout_500ms;  // Keep resetting the timer
+			gBacklightCountdown_500ms = 2; // keep backlight on
+		} else
+#endif
         if (--gMenuCountdown == 0)
             exit_menu = (gScreenToDisplay == DISPLAY_MENU); // exit menu mode
+	}
 
 #ifdef ENABLE_DTMF_CALLING
     if (gDTMF_RX_timeout > 0)
@@ -2169,6 +2298,9 @@ void APP_TimeSlice500ms(void)
     }
 
     if(gCurrentFunction != FUNCTION_TRANSMIT && !FUNCTION_IsRx()
+#ifdef ENABLE_L4S_CONTROL
+        && !L4S_Active()
+#endif
     #ifdef ENABLE_AIRCOPY
         && gScreenToDisplay != DISPLAY_AIRCOPY
     #endif
@@ -2213,6 +2345,16 @@ void APP_TimeSlice500ms(void)
         counter = (counter + 1) % 4;
         BK4819_ToggleGpioOut(BK4819_GPIO5_PIN1_RED, (counter == 0));
     }
+#endif
+
+#ifdef ENABLE_CW_MODULATOR
+	// CW message repeat countdown - when it expires, restart playback
+	if (gCW_MessageRepeatCountdown_500ms > 0) {
+		if (--gCW_MessageRepeatCountdown_500ms == 0 && gCW_PlaybackRepeat) {
+			// Restart playback of the same macro with repeat enabled
+			CW_StartMacroPlayback(gCW_PlaybackMacroIndex, true);
+		}
+	}
 #endif
 
     if (gReducedService)
@@ -2274,7 +2416,11 @@ void APP_TimeSlice500ms(void)
 #endif
     ) {
         if (gEeprom.AUTO_KEYPAD_LOCK && gKeyLockCountdown > 0 && !gDTMF_InputMode
-            && gScreenToDisplay != DISPLAY_MENU && --gKeyLockCountdown == 0)
+            && gScreenToDisplay != DISPLAY_MENU
+#ifdef ENABLE_CODE_PRACTICE
+			&& !gCW_CpoActive
+#endif
+			&& --gKeyLockCountdown == 0)
         {
             gEeprom.KEY_LOCK = true;     // lock the keyboard
             gUpdateStatus = true;            // lock symbol needs showing
@@ -2420,6 +2566,27 @@ static void TX1750_Off(void)
 
 static void ProcessKey(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
+#ifdef ENABLE_L4S_CONTROL
+    if (L4S_LocalKey(Key,bKeyPressed,bKeyHeld)) return;
+#endif
+#ifdef ENABLE_CODE_PRACTICE
+	if (gCW_CpoActive) {
+		if (Key == KEY_EXIT) {
+			CPO_Exit();
+			gRequestDisplayScreen = DISPLAY_MAIN;
+			return;
+		}
+		CPO_ProcessKeys(Key, bKeyPressed, bKeyHeld);
+		return;
+	}
+#endif
+
+#ifdef ENABLE_CW_MODULATOR
+	if (Key == KEY_SIDE1 && gCW_KeyerUsingSD1) {
+		return;
+	}
+#endif
+
 #ifdef ENABLE_FEAT_F4HWN_SLEEP
     if (gSleepWakeKey != KEY_INVALID) {
         if (Key == gSleepWakeKey && !bKeyPressed)
@@ -2654,9 +2821,9 @@ static void ProcessKey(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
     }
 
 #ifdef ENABLE_FEAT_F4HWN // For F + SIDE1 or F + SIDE2
-    if (gWasFKeyPressed && (Key == KEY_PTT || Key == KEY_EXIT)) { 
+    if (gWasFKeyPressed && (Key == KEY_PTT || Key == KEY_EXIT)) {
 #else
-    if (gWasFKeyPressed && (Key == KEY_PTT || Key == KEY_EXIT || Key == KEY_SIDE1 || Key == KEY_SIDE2)) { 
+    if (gWasFKeyPressed && (Key == KEY_PTT || Key == KEY_EXIT || Key == KEY_SIDE1 || Key == KEY_SIDE2)) {
 #endif
         // cancel the F-key
         HideFKeyIcon();
@@ -2665,6 +2832,14 @@ static void ProcessKey(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
     if (bFlag) {
         goto Skip;
     }
+
+#ifdef ENABLE_CW_MODULATOR
+	// Allow any key to stop CW macro playback and cancel repeat
+	if ((gCW_PlaybackActive || gCW_PlaybackRepeat) && bKeyPressed && !bKeyHeld) {
+		CW_StopPlayback();
+		gUpdateDisplay = true;
+	}
+#endif
 
     if (gCurrentFunction == FUNCTION_TRANSMIT) {
 #ifdef ENABLE_TX1750
@@ -2677,7 +2852,12 @@ static void ProcessKey(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
                 GENERIC_Key_PTT(bKeyPressed);
                 goto Skip;
             }
-
+#ifdef ENABLE_CW_MODULATOR
+        if (gCurrentVfo->Modulation == MODULATION_CW) {
+            // Disable DTMF/tone transmission when in CW mode
+            goto Skip;
+        }
+#endif
             if (Key == KEY_SIDE2) { // transmit 1750Hz tone
                 Code = 0xFE;
             }
@@ -2846,6 +3026,12 @@ Skip:
         APP_FullWatchReset();
 #endif
         RADIO_SelectVfos();
+
+#ifdef ENABLE_CW_MODULATOR
+		CW_KeyerReconfigure(gTxVfo->Modulation==MODULATION_CW);
+		gMonitor = (gRxVfo->Modulation == MODULATION_CW ||
+		            gRxVfo->Modulation == MODULATION_USB);
+#endif
 
 #ifdef ENABLE_NOAA
         RADIO_ConfigureNOAA();

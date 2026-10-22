@@ -226,6 +226,21 @@ void UI_DisplayReleaseKeys(void)
     ST7565_BlitFullScreen();
 }
 
+#ifdef ENABLE_CW_MODULATOR
+void UI_DisplayReleasePaddle(void)
+{
+	memset(gStatusLine,  0, sizeof(gStatusLine));
+	UI_DisplayClear();
+
+	UI_PrintString("CW KEY STUCK", 0, 127, 0, 10);
+	UI_PrintString("Port Input", 0, 127, 2, 10);
+	UI_PrintString("disabled", 0, 127, 4, 10);
+
+	ST7565_BlitStatusLine();  // blank status line
+	ST7565_BlitFullScreen();
+}
+#endif
+
 void UI_DisplayWelcome(void)
 {
     UI_StatusClear();
@@ -258,7 +273,7 @@ void UI_DisplayWelcome(void)
         char WelcomeString0[17];
         char WelcomeString1[17];
         char WelcomeString2[16];
-        char WelcomeString3[32];
+        // char WelcomeString3[32];   // only used by commented-out MEM/Edition blocks below
 
         // 0x0EB0
         PY25Q16_ReadBuffer(SETTINGS_BOOT_MESSAGE_LINE1_ADDR, WelcomeString0, 16);
@@ -358,8 +373,8 @@ void UI_DisplayWelcome(void)
         #endif
         */
 
-        sprintf(WelcomeString3, "%s Edition", Edition);
-        UI_PrintStringSmallNormal(WelcomeString3, 0, 127, 6);
+        //sprintf(WelcomeString3, "%s Edition", Edition);
+        UI_PrintStringSmallNormal(Edition, 0, 127, 6);
 
 #else
         UI_PrintStringSmallNormal(Version, 0, 127, 6);

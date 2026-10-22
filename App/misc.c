@@ -85,6 +85,9 @@ const uint16_t    NOAA_countdown_10ms              =  5000 / 10;   // 5 seconds
 const uint16_t    NOAA_countdown_2_10ms            =   500 / 10;   // 500ms
 const uint16_t    NOAA_countdown_3_10ms            =   200 / 10;   // 200ms
 
+#ifdef ENABLE_CW_MODULATOR
+#endif
+
 const uint32_t    gDefaultAesKey[4]                = {0x4AA5CC60, 0x0312CC5F, 0xFFD2DABB, 0x6BBA7F92};
 
 const uint8_t     gMicGain_dB2[9]                  = {3, 8, 16, 24, 32, 40, 48, 56, 63}; // BK4819 {3, 8, 16, 24, 31};
@@ -160,6 +163,9 @@ bool              gSetting_live_DTMF_decoder;
 uint8_t           gSetting_battery_text;
 
 bool              gMonitor = false;           // true opens the squelch
+#ifdef ENABLE_CW_MODULATOR
+bool              gMonitorTemp = false;       // temporary monitor (CW/SSB), non-latching
+#endif
 
 uint32_t          gCustomAesKey[4];
 bool              bHasCustomAesKey;
@@ -319,6 +325,16 @@ volatile bool     gFlagTailNoteEliminationComplete;
 volatile uint8_t  boot_counter_10ms;
 
 uint8_t           gIsLocked = 0xFF;
+
+#ifdef ENABLE_CW_MODULATOR
+    volatile uint32_t gCW_SuspendCounter_1ms;
+	volatile CW_State_t        gCW_State = CW_INACTIVE;
+	volatile bool     gCW_KeyerUsingSD1 = false;
+	volatile bool     gCW_KeyerManagesPtt = false;
+	volatile bool     gCW_CrossMode = false;
+	volatile uint16_t  gCW_TxDisplayHoldoff_10ms = 200;
+	volatile bool     gCW_PlayIndicatorOn = false;  /* toggled periodically to blink indicator */
+#endif
 
 
 #ifdef ENABLE_FEAT_F4HWN

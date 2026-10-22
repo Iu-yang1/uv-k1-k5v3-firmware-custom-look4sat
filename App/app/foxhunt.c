@@ -28,6 +28,9 @@
 
 #include "settings.h"
 #include "ui/status.h"
+#ifdef ENABLE_CW_MODULATOR
+#include "app/cwkeyer.h"
+#endif
 
 // Signal window mapped onto the RSSI bar, in dBm.
 // Roughly S0 (empty) to S9 + 40 dB (full), IARU VHF/UHF scale.
@@ -1372,6 +1375,9 @@ static void FOXHUNT_Begin(void)
     gCurrentVfo    = gTxVfo;
     RADIO_SetupRegisters(true);
 
+#ifdef ENABLE_CW_MODULATOR
+    CW_KeyerReconfigure(false);
+#endif
     // Initialise the full configuration before loading it. The carrier-keying byte was
     // appended (index 7): an older seven-byte config reads 0xFF there and LoadConfig's
     // `<= 1` guard rejects it, so it stays at the default below — no migration needed.

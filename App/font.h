@@ -22,6 +22,10 @@
 
 void FONT_DrawBigGlyph(uint8_t glyph, uint8_t *top, uint8_t *bottom);
 extern const uint8_t gFontBigDigits[11][26 - 6];
+// Large CW text in the style of gFontBigDigits; see font.c
+extern const char    gFontBigTextChars[];
+extern const uint8_t gFontBigText[][26 - 6];
+extern const uint8_t gFontBigDigitZeroDotted[26 - 6];
 extern const uint8_t gFont3x5[96][3];
 
 #define FONT_SMALL_WIDTH       6u
@@ -29,6 +33,10 @@ extern const uint8_t gFont3x5[96][3];
 #define FONT_SMALL_PACKED_SIZE ((FONT_SMALL_GLYPH_COUNT * FONT_SMALL_WIDTH * 7u + 7u) / 8u)
 
 extern const uint8_t gFontSmallPacked[FONT_SMALL_PACKED_SIZE];
+
+// '0' with a center dot, for CW text where callsigns mix 0 and O
+extern const uint8_t gFontBigZeroDotted[16 - 2];
+extern const uint8_t gFontSmallZeroDotted[6];
 #ifdef ENABLE_SMALL_BOLD
     extern const uint8_t gFontSmallBoldPacked[FONT_SMALL_PACKED_SIZE];
 #endif

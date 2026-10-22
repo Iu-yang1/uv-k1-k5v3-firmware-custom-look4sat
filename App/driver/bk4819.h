@@ -46,10 +46,11 @@ typedef enum BK4819_AF_Type_t BK4819_AF_Type_t;
 
 enum BK4819_FilterBandwidth_t
 {
-    BK4819_FILTER_BW_WIDE = 0,
-    BK4819_FILTER_BW_NARROW,
+	BK4819_FILTER_BW_WIDE = 0,
+	BK4819_FILTER_BW_NARROW,
     BK4819_FILTER_BW_NARROWER,
-    BK4819_FILTER_BW_AM
+    BK4819_FILTER_BW_AM,
+    BK4819_FILTER_BW_UNKNOWN
 };
 
 typedef enum BK4819_FilterBandwidth_t BK4819_FilterBandwidth_t;
@@ -113,6 +114,7 @@ void     BK4819_PlaySingleTone(const unsigned int tone_Hz, const unsigned int de
 void     BK4819_EnterTxMute(void);
 void     BK4819_ExitTxMute(void);
 void     BK4819_Sleep(void);
+void     BK4819_StopTxTone(void);
 void     BK4819_TurnsOffTones_TurnsOnRX(void);
 #if defined(ENABLE_AIRCOPY) || defined(ENABLE_FEAT_F4HWN_OVERLAY_APPS)
     void     BK4819_SetupAircopy(void);
@@ -151,6 +153,7 @@ uint8_t  BK4819_GetExNoiceIndicator(void);
 uint16_t BK4819_GetVoiceAmplitudeOut(void);
 uint8_t  BK4819_GetAfTxRx(void);
 void     BK4819_SetRxAudioGain(void);
+void     BK4819_SetAfDacGain(uint8_t dacGain);
 
 bool     BK4819_GetFrequencyScanResult(uint32_t *pFrequency);
 BK4819_CssScanResult_t BK4819_GetCxCSSScanResult(uint32_t *pCdcssFreq, uint16_t *pCtcssFreq);

@@ -45,6 +45,74 @@ enum POWER_OnDisplayMode_t {
 };
 typedef enum POWER_OnDisplayMode_t POWER_OnDisplayMode_t;
 
+#ifdef ENABLE_CW_MODULATOR
+
+// Bit flags for CW keyer input configuration
+#define CW_KEY_FLAG_REVERSED      0x01  // 0=normal, 1=reversed
+#define CW_KEY_FLAG_PORT_RING     0x02  // 0=no port ring, 1=use port ring input
+#define CW_KEY_FLAG_SIDE1         0x04  // 0=not side1, 1=use SIDE1 as the ring paddle contact (PTT is tip)
+#define CW_KEY_FLAG_NO_KEYER      0x08  // 0=keyer enabled, 1=handkey only
+#define CW_KEY_FLAG_PORT_GROUND   0x10  // 0=no port ground, 1=use port ground
+#define CW_KEY_FLAG_USB_PORT      0x20  // 0=not USB port, 1=use USB port (PA11/PA12) as paddle
+
+// for reference, from ui/menu.c:
+	// "PTT\nHandKey",
+	// "Port\nHandKey",
+	// "Side Btn\nIambic",
+	// "Side Btn\nIambic\nReversed",
+	// "Port\nIambic",
+	// "Port\nIambic\nReversed",
+	// "Port+Btn\nIambic",
+	// "Port+Btn\nIambic\nReversed",
+	// "USB Port\nIambic",
+	// "USB Port\nIambic\nReversed",
+	// "USB Port\nHandKey",
+
+// CW key input selection (0-10) mapped to bitmap value - used for menu and eeprom
+static const uint8_t CW_KEY_INPUT_menu_to_bitmap[11] = {
+	0x08, // menu item 0: CW_KEY_FLAG_NO_KEYER - handkey only
+	0x18, // menu item 1: CW_KEY_FLAG_NO_KEYER | CW_KEY_FLAG_PORT_GROUND - handkey + port ground
+	0x04, // menu item 2: CW_KEY_FLAG_SIDE1 - buttons (PTT + SIDE1)
+	0x05, // menu item 3: CW_KEY_FLAG_SIDE1 | CW_KEY_FLAG_REVERSED - buttons + reversed
+	0x12, // menu item 4: CW_KEY_FLAG_PORT_RING | CW_KEY_FLAG_PORT_GROUND - port ring + port ground
+	0x13, // menu item 5: CW_KEY_FLAG_PORT_RING | CW_KEY_FLAG_PORT_GROUND | CW_KEY_FLAG_REVERSED - port ring + port ground + reversed
+	0x16, // menu item 6: CW_KEY_FLAG_SIDE1 | CW_KEY_FLAG_PORT_RING | CW_KEY_FLAG_PORT_GROUND - buttons + port ring + port ground
+	0x17, // menu item 7: CW_KEY_FLAG_SIDE1 | CW_KEY_FLAG_PORT_RING | CW_KEY_FLAG_PORT_GROUND | CW_KEY_FLAG_REVERSED - buttons + port ring + port ground + reversed
+	0x20, // menu item 8: CW_KEY_FLAG_USB_PORT - USB port (PA11=ring/DM, PA12=tip/DP) iambic
+	0x21, // menu item 9: CW_KEY_FLAG_USB_PORT | CW_KEY_FLAG_REVERSED - USB port iambic reversed
+	0x28, // menu item 10: CW_KEY_FLAG_USB_PORT | CW_KEY_FLAG_NO_KEYER - USB port handkey (either pin)
+};
+
+#define CW_KEY_INPUT_HANDKEY 0x08 // shortcut for the default no-keyer mode (menu item 0)
+
+enum CW_IambicMode_t {
+	CW_IAMBIC_MODE_A      = 0,
+	CW_IAMBIC_MODE_B      = 1,
+	CW_KEYER_MODE_ULTIMATIC = 2,
+	CW_IAMBIC_MODE_BUG    = 3,
+};
+typedef enum CW_IambicMode_t CW_IambicMode_t;
+
+// Proper roger dah length in dits (CWrgr menu); 3 is a plain R
+#define CW_ROGER_DAH_DITS_MIN     3
+#define CW_ROGER_DAH_DITS_MAX     20
+#define CW_ROGER_DAH_DITS_DEFAULT 9
+
+// Sidetone level (CWvol menu): 0 = off; see CW_ApplySidetoneGain for the gain curve
+#define CW_SIDETONE_LEVEL_MAX     15
+#define CW_SIDETONE_LEVEL_DEFAULT 7
+
+// Break-in hang time in 10 ms units (CWhang menu): how long TX stays up after the last element
+#define CW_HANG_10MS_MIN          1
+#define CW_HANG_10MS_MAX          200
+#define CW_HANG_10MS_DEFAULT      30
+
+// Copy practice effective speed (Farnsworth): the slowest the gaps between
+// characters can stretch to. It always stays below the keyer speed (max 45).
+#define CW_FARNSWORTH_WPM_MIN     5
+
+#endif
+
 enum TxLockModes_t {
     F_LOCK_DEF, //all default frequencies + configurable
     F_LOCK_FCC,
@@ -136,8 +204,40 @@ enum ACTION_OPT_t {
     ACTION_OPT_BEACON         = 23,
     ACTION_OPT_TONECALL       = 24,
 
-    ACTION_OPT_LEN            = 25
+    ACTION_OPT_PLAY_CWMSG1     = 25,
+    ACTION_OPT_PLAY_CWMSG2     = 26,
+    ACTION_OPT_PLAY_CWMSG3     = 27,
+    ACTION_OPT_PLAY_CWMSG4     = 28,
+    ACTION_OPT_REPEAT_CWMSG1   = 29,
+    ACTION_OPT_REPEAT_CWMSG2   = 30,
+    ACTION_OPT_REPEAT_CWMSG3   = 31,
+    ACTION_OPT_REPEAT_CWMSG4   = 32,
+    ACTION_OPT_CPO             = 33,
+    ACTION_OPT_CW_KEYER_MODE   = 34,
+    ACTION_OPT_CW_PROPER_ROGER = 35,
+    ACTION_OPT_CW_SPEED        = 36,
+    ACTION_OPT_CW_KEY_INPUT    = 37,
+    ACTION_OPT_CW_BREAK_IN     = 38,
+    ACTION_OPT_LEN            = 39
 };
+
+// Side key and M long actions used while the stored one is unset (erased 0xFF, or
+// anything else past ACTION_OPT_LEN): a fresh radio, or after Reset ALL. A stored
+// action always wins, so a layout set from the menu or CHIRP is never replaced.
+// The CHIRP driver carries the same table.
+#ifdef ENABLE_CW_MODULATOR
+    #define KEY_1_SHORT_DEFAULT  ACTION_OPT_CW_PROPER_ROGER
+    #define KEY_1_LONG_DEFAULT   ACTION_OPT_PLAY_CWMSG1   // a CQ recorded in message 1
+    #define KEY_2_SHORT_DEFAULT  ACTION_OPT_CW_SPEED
+    #define KEY_2_LONG_DEFAULT   ACTION_OPT_CW_KEY_INPUT  // on F2: F1 becomes a paddle in the side button inputs
+    #define KEY_M_LONG_DEFAULT   ACTION_OPT_MONITOR
+#else
+    #define KEY_1_SHORT_DEFAULT  ACTION_OPT_MONITOR
+    #define KEY_1_LONG_DEFAULT   ACTION_OPT_NONE
+    #define KEY_2_SHORT_DEFAULT  ACTION_OPT_SCAN
+    #define KEY_2_LONG_DEFAULT   ACTION_OPT_NONE
+    #define KEY_M_LONG_DEFAULT   ACTION_OPT_NONE
+#endif
 
 #ifdef ENABLE_VOICE
     enum VOICE_Prompt_t
@@ -299,6 +399,21 @@ typedef struct {
     uint8_t               S0_LEVEL;
     uint8_t               S9_LEVEL;
 #endif
+#ifdef ENABLE_CW_MODULATOR
+	uint8_t			  	  CW_TONE_FREQUENCY; 	// Actual frequency in 10s of Hz (e.g. 60 for 600 Hz), stored in eeprom as 50 Hz steps from 450 (0=450, 1=500, ..., 15=1200), default 600
+	uint8_t               CW_SIDETONE_LEVEL;	// CW sidetone level: raw menu index 0=off, 1-15 = volume level (see CW_ApplySidetoneGain for the actual BK4819 gain curve)
+	CW_IambicMode_t       CW_KEYER_MODE;		// Iambic A, Iambic B, Ultimatic, or Bug/SAB (keyer disabled when CW_KEY_INPUT == HANDKEY)
+	uint8_t               CW_KEY_WPM;			// actual WPM
+	uint8_t               CW_KEY_INPUT;			// Bitmapped button/port input selections for CW keyer
+	uint16_t			  CW_KEY_INPUT_MENU;	// index of the chosen input method in the menu
+	bool     			  CW_BREAKIN_ENABLE;    // TX on key
+	uint8_t               CW_MESSAGE_REPEAT_DELAY;  // Repeat delay in seconds
+	uint8_t               CW_ROGER_DAH_DITS;    // proper roger dah length in dits
+	uint8_t               CW_HANG_10MS;         // break-in hang time in 10 ms units
+	uint8_t               CW_FARNSWORTH_WPM;    // copy practice effective speed, 0 = keyer spacing
+	bool                  CW_FARNSWORTH_AUTO;   // copy practice narrows and widens the spacing on its own
+#endif
+
 } EEPROM_Config_t;
 
 extern EEPROM_Config_t gEeprom;
@@ -355,4 +470,23 @@ void SETTINGS_UpdateChannel(uint16_t channel, const VFO_Info_t *pVFO, bool keep)
 #ifdef ENABLE_FEAT_F4HWN
     void SETTINGS_ResetTxLock(void);
 #endif
+
+// ---- EEPROM schema ----
+//
+// Schema 1 (pre-v1.4) reused bit 6 of the channel flags byte as a NARROWEST
+// selector on CW/USB records, which meant TX_LOCK could never be set on those
+// channels and F Lock could not gate them. Schema 2 gives bit 6 back to
+// TX_LOCK and keeps the filter in bit 1 as a plain wide/narrow flag.
+//
+// The marker lives at the end of the settings block, in the same 4K sector as
+// the version string, so it costs no extra erase cycle. Pre-v1.4 firmware never
+// wrote it, so an un-migrated radio reads back erased 0xFF.
+#define EEPROM_SCHEMA_ADDR     0x00A179
+#define EEPROM_SCHEMA_LEGACY   1   // pre-v1.4; stored as 0x00 or erased 0xFF
+#define EEPROM_SCHEMA_CURRENT  2   // v1.4: bit 6 is TX_LOCK, bit 1 is the filter
+
+#ifdef ENABLE_CW_MODULATOR
+    void SETTINGS_MigrateFilterSchema(void);
+#endif
+
 #endif

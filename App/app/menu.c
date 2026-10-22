@@ -19,6 +19,11 @@
 #if !defined(ENABLE_OVERLAY)
     #include "py32f0xx.h"
 #endif
+#include "app/cwkeyer.h"
+#ifdef ENABLE_CW_MODULATOR
+	#include "app/cwmacro.h"
+	#include "app/cwhardware.h"
+#endif
 #include "app/dtmf.h"
 #if defined(ENABLE_FEAT_F4HWN_MULTIBOOT_HOT_CFG) && defined(ENABLE_FMRADIO_EMBEDDED)
     #include "app/fm.h"
@@ -33,7 +38,7 @@
 #include "board.h"
 #include "driver/backlight.h"
 #include "driver/bk4819.h"
-#include "driver/eeprom.h"
+#include "driver/py25q16.h"
 #include "driver/gpio.h"
 #include "driver/keyboard.h"
 #ifdef ENABLE_FEAT_F4HWN_MULTIBOOT
@@ -55,7 +60,6 @@
 #include "ui/inputbox.h"
 #include "ui/menu.h"
 #include "ui/ui.h"
-
 
 uint8_t gUnlockAllTxConfCnt;
 bool     gScanMixEditorActive;
@@ -151,6 +155,11 @@ static void MENU_SaveScanMixEditor(void)
     gRequestDisplayScreen = DISPLAY_MENU;
 }
 
+#ifdef ENABLE_CW_MODULATOR
+bool gCwKeyInputCheckFailed = false;
+bool gCwNoKeyerError = false;
+#endif
+
 #ifdef ENABLE_F_CAL_MENU
     void writeXtalFreqCal(const int32_t value, const bool update_eeprom)
     {
@@ -172,9 +181,9 @@ static void MENU_SaveScanMixEditor(void)
             // radio 1 .. 04 00 46 00 50 00 2C 0E
             // radio 2 .. 05 00 46 00 50 00 2C 0E
             //
-            EEPROM_ReadBuffer(0x1F88, &misc, 8);
+            PY25Q16_ReadBuffer(0x010000 + 0x188, &misc, 8);
             misc.BK4819_XtalFreqLow = value;
-            EEPROM_WriteBuffer(0x1F88, &misc, 8);
+            PY25Q16_WriteBuffer(0x010188, &misc, 8, false);
         }
     }
 #endif
@@ -337,7 +346,8 @@ int MENU_GetLimits(uint8_t menu_id, int32_t *pMin, int32_t *pMax)
 
         case MENU_W_N:
             //*pMin = 0;
-            *pMax = ARRAY_SIZE(gSubMenu_W_N) - 1;
+            // CW and USB have one filter, shown as the only choice
+            *pMax = RADIO_HasFilterChoice(gTxVfo) ? ARRAY_SIZE(gSubMenu_W_N) - 1 : 0;
             break;
 
         case MENU_RESET:
@@ -463,6 +473,66 @@ int MENU_GetLimits(uint8_t menu_id, int32_t *pMin, int32_t *pMax)
             //*pMin = 0;
             *pMax = SIDEFUNCTION_COUNT - 1;
             break;
+#ifdef ENABLE_CW_MODULATOR
+		case MENU_CW_FREQ:
+			*pMin = 0; // == 450Hz
+			*pMax = 7; // up to 800 Hz in 50 Hz steps
+			break;
+
+		case MENU_CW_SIDETONE_LEVEL:
+			*pMin = 0;
+			*pMax = CW_SIDETONE_LEVEL_MAX;  // 0=off, 1-15 are volume levels
+			break;
+
+		case MENU_CW_KEYER_MODE:
+			*pMin = 0;
+			*pMax = 3;
+			break;
+
+		case MENU_CW_KEY_WPM:
+			*pMin = 10;
+			*pMax = 45;
+			break;
+
+		case MENU_CW_KEY_INPUT:
+			*pMin = 0;
+			*pMax = 10;
+			break;
+
+		case MENU_CW_MSG1:
+		case MENU_CW_MSG2:
+		case MENU_CW_MSG3:
+		case MENU_CW_MSG4:
+			*pMin = 0;
+			*pMax = 3;  // show, record, play, repeat
+			break;
+
+		case MENU_CW_MSG_REPEAT:
+			*pMin = 0;
+			*pMax = 127;  // 0-127 menu value (stored as seconds)
+			break;
+
+		case MENU_CW_ROGER_DITS:
+			*pMin = CW_ROGER_DAH_DITS_MIN;
+			*pMax = CW_ROGER_DAH_DITS_MAX;
+			break;
+
+		case MENU_CW_BKIN:
+			*pMin = 0;  // off
+			*pMax = 1;  // on
+			break;
+
+		case MENU_CW_HANG:
+			*pMin = CW_HANG_10MS_MIN;  // 10 ms steps
+			*pMax = CW_HANG_10MS_MAX;
+			break;
+
+#endif
+#ifdef ENABLE_FEAT_F4HWN_SLEEP
+        case MENU_SET_OFF:
+            *pMax = 120;
+            break;
+#endif
 
 #ifdef ENABLE_FEAT_F4HWN
         case MENU_SET_PWR:
@@ -505,11 +575,11 @@ int MENU_GetLimits(uint8_t menu_id, int32_t *pMin, int32_t *pMax)
 #endif
 
         case MENU_VOL: {
-            // SysInf paginates: 
-            // page 0 = identity, 
+            // SysInf paginates:
+            // page 0 = identity,
             // page 1 = build date/time,
             // page 2 = battery,
-            // +1 if F4HWN_MEM (Flash/SRAM), 
+            // +1 if F4HWN_MEM (Flash/SRAM),
             // +2 if F4HWN_QRCODE (Code QR + Wiki QR).
             int32_t vol_max = 0;
             #ifdef ENABLE_FEAT_F4HWN
@@ -639,8 +709,11 @@ void MENU_AcceptSetting(void)
             return;
 
         case MENU_W_N:
-            gTxVfo->CHANNEL_BANDWIDTH = gSubMenuSelection;
-            gRequestSaveChannel       = 1;
+            // leave the bit alone where it does nothing, so FM and AM keep their width
+            if (RADIO_HasFilterChoice(gTxVfo)) {
+                gTxVfo->CHANNEL_BANDWIDTH = gSubMenuSelection;
+                gRequestSaveChannel       = 1;
+            }
             return;
 
 #ifndef ENABLE_FEAT_F4HWN
@@ -980,6 +1053,113 @@ void MENU_AcceptSetting(void)
             gRequestSaveChannel       = 1;
             return;
 #endif
+#ifdef ENABLE_CW_MODULATOR
+		case MENU_CW_KEY_WPM:
+			gEeprom.CW_KEY_WPM = gSubMenuSelection;
+			CW_UpdateWPM();
+			break;
+
+		case MENU_CW_FREQ:
+			// 50 hz steps from 450 Hz to 800 Hz - stored as 45 to 80
+			gEeprom.CW_TONE_FREQUENCY = 45 + gSubMenuSelection * 5;
+			// Set the "BFO" - Frequency is in deciHz, so no scaling needed
+			gRequestSaveChannel       = 1;
+			// char buf[64];
+			// sprintf_(buf, "in menu RX freq: %d Hz, offset: %d Hz\r\n", gRxVfo->pRX->Frequency * 10, (10 * gEeprom.CW_TONE_FREQUENCY));
+			// UART_Send(buf, strlen(buf));
+			break;
+
+		case MENU_CW_SIDETONE_LEVEL:
+			gEeprom.CW_SIDETONE_LEVEL = gSubMenuSelection;
+			break;
+
+		case MENU_CW_KEYER_MODE:
+			gEeprom.CW_KEYER_MODE = gSubMenuSelection;
+			CW_KeyerResetRuntime();  // avoid stale squeeze/tracker state bleeding across mode switch
+			break;
+
+		case MENU_CW_BKIN:
+			gEeprom.CW_BREAKIN_ENABLE = gSubMenuSelection;  // 0=off, 1=on
+			break;
+
+		case MENU_CW_HANG:
+			gEeprom.CW_HANG_10MS = gSubMenuSelection;
+			break;
+
+		case MENU_CW_KEY_INPUT:
+			// Map menu selection (0-10) to bit-mapped value
+			{
+				uint8_t new_mode = CW_KEY_INPUT_menu_to_bitmap[gSubMenuSelection];
+				// Validate key inputs before accepting
+				if (!CW_CheckKeyerInputs(new_mode)) {
+					// Validation failed - keys stuck
+					gCwKeyInputCheckFailed = true;
+					gEeprom.CW_KEY_INPUT = CW_KEY_INPUT_HANDKEY; // Revert to safe default
+					gEeprom.CW_KEY_INPUT_MENU = 0;
+					gRequestDisplayScreen = DISPLAY_MENU;
+				} else
+				{
+					gCwKeyInputCheckFailed = false;
+					gEeprom.CW_KEY_INPUT = new_mode;
+					gEeprom.CW_KEY_INPUT_MENU = gSubMenuSelection;
+				}
+			}
+			gFlagReconfigureVfos = true;  // Reconfigure VFOs to apply new key input settings
+			break;
+
+		case MENU_CW_MSG1:
+		case MENU_CW_MSG2:
+		case MENU_CW_MSG3:
+		case MENU_CW_MSG4:
+			uint8_t macroIdx = UI_MENU_GetCurrentMenuId() - MENU_CW_MSG1;
+			// If gSubMenuSelection == 1, user selected "record new"
+			if (gSubMenuSelection == 1) {
+				// Check if we're in CW mode
+				if (gTxVfo->Modulation != MODULATION_CW) {
+					// Not in CW mode - can't use keyer for recording
+					gCwNoKeyerError = true;
+					gRequestDisplayScreen = DISPLAY_MENU;
+					return;  // Don't enter recording mode
+				}
+				// Enter recording mode
+				gCwNoKeyerError = false;
+				CW_StartRecording(macroIdx);
+				edit_index = 0;  // Use edit_index >= 0 to signal we're in recording mode
+			}
+			// If gSubMenuSelection == 2, user selected "play", 3 is "repeat"
+			else if (gSubMenuSelection == 2 || gSubMenuSelection == 3) {
+				// Check if we're in CW mode (playback requires CW mode active)
+				if (gTxVfo->Modulation != MODULATION_CW) {
+					gCwNoKeyerError = true;
+					gSubMenuSelection = 0; // Reset selection to "show"
+					gRequestDisplayScreen = DISPLAY_MENU;
+					return; // Can't play when not in CW mode
+				}
+				if (CW_GetMacroLength(macroIdx) == 0) {
+					// No macro recorded
+					gSubMenuSelection = 0; // Reset selection to "show"
+					gRequestDisplayScreen = DISPLAY_MENU;
+					return; // Don't attempt playback
+				}
+				gCwNoKeyerError = false;
+				CW_StartMacroPlayback(macroIdx, gSubMenuSelection == 3);
+
+				// This is the magic incantation so it won't re-open the submenu after accepting
+				gRequestDisplayScreen = DISPLAY_MAIN;
+				gPttWasReleased = true;
+				return;
+			}
+			break;
+
+		case MENU_CW_MSG_REPEAT:
+			gEeprom.CW_MESSAGE_REPEAT_DELAY = gSubMenuSelection;
+			break;
+
+		case MENU_CW_ROGER_DITS:
+			gEeprom.CW_ROGER_DAH_DITS = gSubMenuSelection;
+			break;
+#endif
+
     }
 
     gRequestSaveSettings = true;
@@ -1104,7 +1284,7 @@ void MENU_ShowCurrentSetting(void)
             break;
 
         case MENU_W_N:
-            gSubMenuSelection = gTxVfo->CHANNEL_BANDWIDTH;
+            gSubMenuSelection = RADIO_HasFilterChoice(gTxVfo) ? gTxVfo->CHANNEL_BANDWIDTH : 0;
             break;
 
 #ifndef ENABLE_FEAT_F4HWN
@@ -1347,10 +1527,50 @@ void MENU_ShowCurrentSetting(void)
             gSubMenuSelection = gTxVfo->TX_LOCK;
             break;
 #endif
+	#ifdef ENABLE_CW_MODULATOR
+		case MENU_CW_KEY_WPM:
+			gSubMenuSelection = gEeprom.CW_KEY_WPM;
+			break;
+		case MENU_CW_FREQ:
+			gSubMenuSelection = (gEeprom.CW_TONE_FREQUENCY - 45) / 5;
+			break;
+		case MENU_CW_SIDETONE_LEVEL:
+			gSubMenuSelection = gEeprom.CW_SIDETONE_LEVEL;
+			break;
+		case MENU_CW_KEYER_MODE:
+			gSubMenuSelection = gEeprom.CW_KEYER_MODE;
+			break;
+		case MENU_CW_BKIN:
+			gSubMenuSelection = gEeprom.CW_BREAKIN_ENABLE;
+			break;
+
+		case MENU_CW_HANG:
+			gSubMenuSelection = gEeprom.CW_HANG_10MS;
+			break;
+
+		case MENU_CW_KEY_INPUT:
+			gSubMenuSelection = gEeprom.CW_KEY_INPUT_MENU;
+		break;
+
+		case MENU_CW_MSG1:
+		case MENU_CW_MSG2:
+		case MENU_CW_MSG3:
+		case MENU_CW_MSG4:
+			gSubMenuSelection = 0;  // Default to showing current macro
+			break;
+
+		case MENU_CW_MSG_REPEAT:
+			gSubMenuSelection = gEeprom.CW_MESSAGE_REPEAT_DELAY;
+			break;
+
+		case MENU_CW_ROGER_DITS:
+			gSubMenuSelection = gEeprom.CW_ROGER_DAH_DITS;
+			break;
+#endif
 
         default:
             return;
-    }
+	}
 }
 
 static KEY_Code_t edit_last_key = 255;
@@ -1419,7 +1639,7 @@ static void MENU_Key_0_to_9(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
         {
             edit[edit_index] = '0' + key_idx;
             edit_last_key = 255;
-            
+
             gRequestDisplayScreen = DISPLAY_MENU;
             return;
         }
@@ -1693,6 +1913,10 @@ Skip:
         gIsInSubMenu        = false;
         gInputBoxIndex      = 0;
         gFlagRefreshSetting = true;
+#ifdef ENABLE_CW_MODULATOR
+        gCwKeyInputCheckFailed = false;
+        gCwNoKeyerError = false;
+#endif
 
         #ifdef ENABLE_VOICE
             gAnotherVoiceID = VOICE_ID_CANCEL;
@@ -1707,6 +1931,21 @@ Skip:
         return;
 
     gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
+
+#ifdef ENABLE_CW_MODULATOR
+	// Handle exiting CW macro recording mode (discard without saving)
+	if (gCW_Recording) {
+		gFlagReconfigureVfos = true;
+		gCW_Recording = false;
+		gCW_RecordNewChar = false;
+		edit_index = -1;
+		gIsInSubMenu = false;
+		gSubMenuSelection = 0;
+		gFlagRefreshSetting = true;
+		gRequestDisplayScreen = DISPLAY_MENU;
+		return;
+	}
+#endif
 
     if (!gCssBackgroundScan)
     {
@@ -1804,7 +2043,7 @@ static void MENU_Key_MENU(const bool bKeyPressed, const bool bKeyHeld)
 
     if (!bKeyPressed || (bKeyHeld && (!MENU_IsEditingName() || gAskForConfirmation)))
         return;
-    
+
     gBeepToPlay           = BEEP_1KHZ_60MS_OPTIONAL;
     gRequestDisplayScreen = DISPLAY_MENU;
 
@@ -1823,6 +2062,17 @@ static void MENU_Key_MENU(const bool bKeyPressed, const bool bKeyHeld)
     }
 #endif
 
+#ifdef ENABLE_CW_MODULATOR
+	// Handle completing CW macro recording
+	if (gCW_Recording) {
+		CW_StopRecording();
+		edit_index = -1;
+		gIsInSubMenu = false;
+		gSubMenuSelection = 0;  // Show the saved macro for record
+		return;
+	}
+#endif
+
     if (!gIsInSubMenu)
     {
         const int m = UI_MENU_GetCurrentMenuId();
@@ -1831,9 +2081,9 @@ static void MENU_Key_MENU(const bool bKeyPressed, const bool bKeyHeld)
             if (m != MENU_SCR)
                 gAnotherVoiceID = MenuList[gMenuIndices[gMenuCursor]].voice_id;
         #endif
-        if (m == MENU_UPCODE 
-            || m == MENU_DWCODE 
-#ifdef ENABLE_DTMF_CALLING 
+        if (m == MENU_UPCODE
+            || m == MENU_DWCODE
+#ifdef ENABLE_DTMF_CALLING
             || m == MENU_ANI_ID
 #endif
             )
@@ -1846,6 +2096,10 @@ static void MENU_Key_MENU(const bool bKeyPressed, const bool bKeyHeld)
 
         gAskForConfirmation = 0;
         gIsInSubMenu        = true;
+#ifdef ENABLE_CW_MODULATOR
+		gCwKeyInputCheckFailed = false;  // Clear error when entering submenu
+		gCwNoKeyerError = false;
+#endif
 
 //      if (m != MENU_D_LIST)
         {
@@ -2002,6 +2256,27 @@ static void MENU_Key_MENU(const bool bKeyPressed, const bool bKeyHeld)
         }
         else
         {
+#ifdef ENABLE_CW_MODULATOR
+			// Special handling: if we're about to start CW macro recording, stay in submenu
+			if ((UI_MENU_GetCurrentMenuId() >= MENU_CW_MSG1 && UI_MENU_GetCurrentMenuId() <= MENU_CW_MSG4)
+			    && gSubMenuSelection == 1)
+			{
+				// User is confirming "record new?" - check if we're in CW mode
+				if (gTxVfo->Modulation != MODULATION_CW) {
+					// Not in CW mode - can't use keyer for recording
+					gCwNoKeyerError = true;
+					gFlagAcceptSetting = false;  // Don't accept the setting
+					gIsInSubMenu = false;  // Exit submenu to show error
+					gRequestDisplayScreen = DISPLAY_MENU;
+					return;
+				}
+				// We're in CW mode - will start recording via MENU_AcceptSetting
+				// Stay in submenu for recording mode (don't set gIsInSubMenu = false)
+				gFlagAcceptSetting = true;
+				// Don't change gIsInSubMenu - keep it true for recording display
+				return;
+			}
+#endif
             gFlagAcceptSetting = true;
             gIsInSubMenu       = false;
         }
@@ -2142,19 +2417,29 @@ static void MENU_Key_UP_DOWN(bool bKeyPressed, bool bKeyHeld, int8_t Direction)
         return;
     }
 
+#ifdef ENABLE_CW_MODULATOR
+	if (gIsInSubMenu && UI_MENU_GetCurrentMenuId() == MENU_CW_KEY_INPUT)
+		gCwKeyInputCheckFailed = false;  // Clear error when changing value with UP/DOWN
+	if (gIsInSubMenu && (UI_MENU_GetCurrentMenuId() >= MENU_CW_MSG1 && UI_MENU_GetCurrentMenuId() <= MENU_CW_MSG4))
+		gCwNoKeyerError = false;  // Clear error when changing value with UP/DOWN
+#endif
+
     if (!gIsInSubMenu)
     {
         gMenuCursor = NUMBER_AddWithWraparound(gMenuCursor, -Direction, 0, gMenuListCount - 1);
-
+#ifdef ENABLE_CW_MODULATOR
+		gCwKeyInputCheckFailed = false;  // Clear error when changing menu items
+		gCwNoKeyerError = false;
+#endif
         gFlagRefreshSetting = true;
 
         gRequestDisplayScreen = DISPLAY_MENU;
 
         const int m = UI_MENU_GetCurrentMenuId();
 
-        if (m != MENU_ABR 
-            && m != MENU_ABR_MIN 
-            && m != MENU_ABR_MAX 
+        if (m != MENU_ABR
+            && m != MENU_ABR_MIN
+            && m != MENU_ABR_MAX
             && gEeprom.BACKLIGHT_TIME == 0) // backlight always off and not in the backlight menu
         {
             BACKLIGHT_TurnOff();
@@ -2180,7 +2465,7 @@ static void MENU_Key_UP_DOWN(bool bKeyPressed, bool bKeyHeld, int8_t Direction)
     }
 
     VFO = 0;
-    
+
     const int m = UI_MENU_GetCurrentMenuId();
 
     switch (m)
@@ -2188,7 +2473,7 @@ static void MENU_Key_UP_DOWN(bool bKeyPressed, bool bKeyHeld, int8_t Direction)
         case MENU_DEL_CH:
         case MENU_1_CALL:
         case MENU_S_PRI_CH_1:
-        case MENU_S_PRI_CH_2:            
+        case MENU_S_PRI_CH_2:
         case MENU_MEM_NAME:
             bCheckScanList = false;
             break;
@@ -2226,7 +2511,7 @@ static void MENU_Key_UP_DOWN(bool bKeyPressed, bool bKeyHeld, int8_t Direction)
         }
         else if(Direction < 0 && gSubMenuSelection > last)
         {
-            gSubMenuSelection = MR_CHANNELS_MAX;           
+            gSubMenuSelection = MR_CHANNELS_MAX;
         }
         else
         {

@@ -204,6 +204,7 @@ static const char *app_err_text(const app_header_t *header, uint8_t rc)
         case APP_ERR_VMA:           return "UPDATE APP";
         case APP_ERR_AUTH:          return "AUTH";
         case APP_ERR_CAP:           return "NOT SUPPORTED";
+        case APP_ERR_BUSY:          return "RADIO BUSY";
         default:                    return "ERROR";
     }
 }

@@ -60,7 +60,16 @@ void AUDIO_PlayBeep(BEEP_Type_t Beep)
          Beep == BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL) &&
          !gEeprom.BEEP_CONTROL)
         return;
-        
+
+#ifdef ENABLE_AIRCOPY
+    if (gScreenToDisplay == DISPLAY_AIRCOPY)
+        return;
+#endif
+#ifdef ENABLE_CW_MODULATOR
+	if(gCurrentVfo->Modulation == MODULATION_CW || gCurrentVfo->Modulation == MODULATION_USB)
+		return;
+#endif
+
     if (gCurrentFunction == FUNCTION_RECEIVE)
         return;
 

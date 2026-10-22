@@ -188,6 +188,14 @@ const uint8_t gFontVox[2][6] =
 };
 #endif
 
+#ifdef ENABLE_CW_MODULATOR
+    const uint8_t gFontBK[2][6] =
+    {
+        {0x00, 0x7F, 0x49, 0x49, 0x36, 0x00},  // B
+        {0x00, 0x7F, 0x14, 0x22, 0x41, 0x00},  // K
+    };
+#endif
+
 const uint8_t BITMAP_VFO_Lock[7] =
 {
     0b00111100,
@@ -458,3 +466,26 @@ const uint8_t BITMAP_CurrentIndicator[8] = {
     0x18
 };
 #endif
+
+/* Small play glyph (8x8): right-facing triangle (full 8 columns) */
+const uint8_t BITMAP_Play[8] = {
+	0b00000000,
+	0b00011000,
+	0b00011000,
+	0b00011000,
+	0b10011001,
+	0b01011010,
+	0b00111100,
+	0b00011000,
+};
+
+/* CW popup confirm (MENU) mark, 7x7: a small-font capital's height */
+const uint8_t BITMAP_Confirm[7] = {
+	0b00011000,
+	0b00110000,
+	0b01100000,
+	0b00111000,
+	0b00001100,
+	0b00000110,
+	0b00000011,
+};

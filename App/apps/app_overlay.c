@@ -39,6 +39,10 @@
 #include "k5viewer.h"
 #endif
 #include "app/app.h"
+#ifdef ENABLE_L4S_CONTROL
+#include "app/l4s_control.h"
+#include "app/cwkeyer.h"
+#endif
 #ifdef ENABLE_FEAT_F4HWN_RXTX_LOG
 #include "app/rxtx_log.h"
 #endif
@@ -89,6 +93,9 @@ _Static_assert(APP_SLOT_BASE(APP_SLOT_COUNT) <= 0x001DE000u,
 
 enum {
     APP_AVAILABLE_CAPS = APP_CAP_CFG_PROXY
+#ifdef ENABLE_L4S_CONTROL
+                       | APP_CAP_L4S
+#endif
 #ifdef ENABLE_FMRADIO
                        | APP_CAP_FM
 #endif
@@ -779,6 +786,9 @@ static void app_screen_save(uint32_t base, uint16_t asset_size, uint8_t *ws)
  * roughly quarter-kilobyte automatic object on every launch and removes that
  * object from the launcher's stack frame.  Callbacks must also obey the ABI's
  * no-external-flash-write rule while entry() is running. */
+static bool overlay_running;
+bool APP_OverlayRunning(void) { return overlay_running; }
+
 static const app_api_t app_api = {
     .abi_major        = APP_ABI_MAJOR,
     .api_level        = APP_API_LEVEL,
@@ -872,10 +882,19 @@ static const app_api_t app_api = {
     .sys_stack_free_now  = STACK_FreeNow,
     .sys_stack_free_min  = STACK_FreeMinimum,
 #endif
+#ifdef ENABLE_L4S_CONTROL
+    .l4s_request_page = L4S_RequestPage,
+#endif
 };
 
 uint8_t APP_LaunchOverlay(uint8_t slot)
 {
+#ifdef ENABLE_L4S_CONTROL
+    if (L4S_Active() || L4S_StoreBusy(L4S_GetStore()) ||
+        L4S_MacrosBusy(L4S_GetMacros()) || gCurrentFunction == FUNCTION_TRANSMIT ||
+        gCW_PlaybackActive || gCW_Recording)
+        return APP_ERR_BUSY;
+#endif
     app_header_t h;
     uint8_t rc = app_read_validated_header(slot, &h);
     if (rc != APP_OK)
@@ -968,7 +987,12 @@ uint8_t APP_LaunchOverlay(uint8_t slot)
     RADIO_SetupRegisters(true);
 
     app_entry_t entry = (app_entry_t)(((uint32_t)ws + h.entry_off) | 1u);
+#ifdef ENABLE_L4S_CONTROL
+    CW_KeyerReconfigure(false);
+#endif
+    overlay_running = true;
     entry(&app_api);
+    overlay_running = false;
 
     /* First thing after the app: nothing has drawn over its last screen yet. */
     if (h.flags & APP_FLAG_SAVE_SCREEN)
@@ -983,6 +1007,9 @@ uint8_t APP_LaunchOverlay(uint8_t slot)
     gRxVfo         = saved_rx;
     gTxVfo         = saved_tx;
     gCurrentVfo    = saved_current;
+#ifdef ENABLE_L4S_CONTROL
+    CW_KeyerReconfigure(gRxVfo->Modulation == MODULATION_CW);
+#endif
     RADIO_SetupRegisters(true);
 
     /* The overlay held app code, not a valid config sector. */

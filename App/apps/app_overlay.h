@@ -125,6 +125,7 @@
  * the editor and by its target, whose settings cannot be changed without it;
  * earlier firmware refuses both with APP_ERR_CAP. */
 #define APP_CAP_CFG_PROXY     0x00000020u
+#define APP_CAP_L4S           0x00000040u
 
 /* Aligned RAM objects; app_overlay.c pins every serialized field offset. */
 typedef struct {
@@ -155,6 +156,7 @@ enum {
     APP_ERR_VMA,            /* overlay buffer not at the link VMA     */
     APP_ERR_AUTH,           /* host write refused: timestamp mismatch */
     APP_ERR_CAP,            /* required firmware capability missing   */
+    APP_ERR_BUSY,           /* native CW/CAT owns RF or profile writes */
 };
 
 /* Read + validate a slot header (no CRC of the code). */
@@ -163,6 +165,7 @@ uint8_t APP_ValidateSlot(uint8_t slot, app_header_t *out_header);
 /* Validate, load into the overlay, verify the code CRC, and run the app.
  * Returns when the app exits; the internal flash is never touched. */
 uint8_t APP_LaunchOverlay(uint8_t slot);
+bool APP_OverlayRunning(void);
 
 /* Launch the first installed app advertising this shortcut bit. */
 uint8_t APP_LaunchOverlayShortcut(uint8_t shortcut);

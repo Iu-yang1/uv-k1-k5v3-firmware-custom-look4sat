@@ -38,6 +38,13 @@
 #include "ui/menu.h"
 #include "ui/scanner.h"
 #include "ui/ui.h"
+#ifdef ENABLE_L4S_CONTROL
+#include "app/l4s_control.h"
+#include "ui/l4s.h"
+#endif
+#ifdef ENABLE_CODE_PRACTICE
+	#include "ui/cpo.h"
+#endif
 #include "../misc.h"
 
 GUI_DisplayType_t gScreenToDisplay;
@@ -52,6 +59,13 @@ void (*const UI_DisplayFunctions[])(void) = {
     [DISPLAY_MAIN] = &UI_DisplayMain,
     [DISPLAY_MENU] = &UI_DisplayMenu,
     [DISPLAY_SCANNER] = &UI_DisplayScanner,
+#ifdef ENABLE_L4S_CONTROL
+    [DISPLAY_L4S] = &UI_DisplayL4s,
+#endif
+
+#ifdef ENABLE_CODE_PRACTICE
+	[DISPLAY_CPO] = &UI_DisplayCPO,
+#endif
 
 #ifdef ENABLE_FMRADIO_EMBEDDED
     [DISPLAY_FM] = &UI_DisplayFM,
@@ -85,6 +99,10 @@ void GUI_SelectNextDisplay(GUI_DisplayType_t Display)
 {
     if (Display == DISPLAY_INVALID)
         return;
+
+#ifdef ENABLE_L4S_CONTROL
+    if (L4S_Active()) Display = DISPLAY_L4S;
+#endif
 
     if (gScreenToDisplay != Display)
     {

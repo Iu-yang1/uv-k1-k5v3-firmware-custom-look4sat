@@ -159,6 +159,50 @@
             }
         },
         {
+            "name": "L4S",
+            "inherits": "Fusion",
+            "cacheVariables": {
+                "EDITION_STRING": "Look4Sat",
+                "TARGET": "look4sat.f4hwn620",
+                "VERSION_STRING_2": "v6.2.0-l4s-dev",
+                "ENABLE_VOX": false,
+                "ENABLE_FMRADIO": false,
+                "ENABLE_SMALL_BOLD": false,
+                "ENABLE_CUSTOM_MENU_LAYOUT": false,
+                "ENABLE_SCAN_RANGES": false,
+                "ENABLE_FEAT_F4HWN_MENU_CAT": false,
+                "ENABLE_FEAT_F4HWN_VOL": false,
+                "ENABLE_FEAT_F4HWN_AUDIO": false,
+                "ENABLE_FEAT_F4HWN_SLEEP": false,
+                "ENABLE_FEAT_F4HWN_RESUME_STATE": false,
+                "ENABLE_FEAT_F4HWN_SCAN_PROGRESS": false,
+                "ENABLE_FEAT_F4HWN_SCAN_FASTER": false,
+                "ENABLE_FEAT_F4HWN_SCAN_RSSI": false,
+                "ENABLE_FEAT_F4HWN_SCAN_SUBAUDIBLE": false,
+                "ENABLE_FEAT_F4HWN_LOGO": false,
+                "ENABLE_FEAT_F4HWN_LOGO_SAV": false,
+                "ENABLE_L4S_CONTROL": true,
+                "ENABLE_FEAT_NR7Y_CW": true,
+                "ENABLE_FEAT_NR7Y_CPO": true,
+                "ENABLE_MILLIS": true,
+                "ENABLE_EXTRA_FILTER": true,
+                "ENABLE_F_CAL_MENU": true,
+                "ENABLE_LTO": true,
+                "ENABLE_FEAT_F4HWN_FULL_WATCH": false,
+                "ENABLE_SPECTRUM": false,
+                "ENABLE_FEAT_F4HWN_AUDIO_SCOPE": false,
+                "ENABLE_FEAT_F4HWN_QRCODE": false,
+                "ENABLE_FEAT_F4HWN_MEM": false,
+                "ENABLE_FEAT_F4HWN_PMR": false,
+                "ENABLE_FEAT_F4HWN_GMRS_FRS_MURS": false,
+                "ENABLE_FEAT_F4HWN_RXTX_LOG": false,
+                "ENABLE_FEAT_F4HWN_RXTX_LOG_K5VIEWER": false,
+                "ENABLE_FEAT_F4HWN_OVERLAY_APPS": true,
+                "ENABLE_FEAT_F4HWN_OVERLAY_INFO": true,
+                "ENABLE_FEAT_F4HWN_EXT_FLASH_RW": true
+            }
+        },
+        {
             "name": "FieldOps",
             "inherits": "Fusion",
             "cacheVariables": {
@@ -217,6 +261,10 @@
         }
     ],
     "buildPresets": [
+        {
+            "name": "L4S",
+            "configurePreset": "L4S"
+        },
         {
             "name": "Custom",
             "configurePreset": "Custom"

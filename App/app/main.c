@@ -38,6 +38,13 @@
 #ifdef ENABLE_FEAT_F4HWN_OVERLAY_APPS
 #include "apps/app_menu.h"
 #endif
+#ifdef ENABLE_CODE_PRACTICE
+#include "app/cpo.h"
+#endif
+#ifdef ENABLE_CW_MODULATOR
+#include "app/cwpopup.h"
+#include "app/cwrit.h"
+#endif
 
 #include "audio.h"
 #include "board.h"
@@ -90,7 +97,7 @@ static void toggle_chan_scanlist(void)
 #endif
         return;
     }
-    
+
     ChannelAttributes_t *att = MR_GetChannelAttributes(gTxVfo->CHANNEL_SAVE);
 
     // Remove exclude
@@ -98,8 +105,8 @@ static void toggle_chan_scanlist(void)
     {
         att->exclude = false;
         MR_SaveChannelAttributesToFlash(gTxVfo->CHANNEL_SAVE, att);
-    } 
-    else 
+    }
+    else
     {
         uint8_t scanlist = gTxVfo->SCANLIST_PARTICIPATION;
 
@@ -139,9 +146,11 @@ static void processFKeyFunction(const KEY_Code_t Key, const bool beep)
 
     switch (Key) {
         case KEY_0:
-            #ifdef ENABLE_FMRADIO
-                ACTION_FM();
-            #endif
+            // Plain long press, and F + short press, rotate the modulation mode.
+            // FM broadcast listening lives on F + LONG press instead
+            // (processFKeyLongFunction) so that enabling ENABLE_FMRADIO doesn't
+            // cost us the demodulation shortcut.
+            ACTION_SwitchDemodul();
             break;
 
         case KEY_1:
@@ -175,8 +184,6 @@ static void processFKeyFunction(const KEY_Code_t Key, const bool beep)
                     RADIO_ApplyOffset(gRxVfo);
                     RADIO_ConfigureSquelchAndOutputPower(gRxVfo);
                     RADIO_SetupRegisters(true);
-
-                    //SETTINGS_SaveChannel(channel, gEeprom.RX_VFO, gRxVfo, 1);
 
                     gRequestSaveChannel = 1;
                     gRequestSaveVFO = true;
@@ -237,7 +244,7 @@ static void processFKeyFunction(const KEY_Code_t Key, const bool beep)
             }
 
             gBackup_CROSS_BAND_RX_TX  = gEeprom.CROSS_BAND_RX_TX;
-            gEeprom.CROSS_BAND_RX_TX = CROSS_BAND_OFF;     
+            gEeprom.CROSS_BAND_RX_TX = CROSS_BAND_OFF;
 
             SCANNER_Start(false);
             gRequestDisplayScreen = DISPLAY_SCANNER;
@@ -263,9 +270,13 @@ static void processFKeyFunction(const KEY_Code_t Key, const bool beep)
 #endif
             }
             else {
+
                 toggle_chan_scanlist();
             }
-
+#if defined(ENABLE_CODE_PRACTICE) && !defined(ENABLE_NOAA) && !defined(ENABLE_SPECTRUM)
+				CPO_Enter();
+				gRequestDisplayScreen = DISPLAY_CPO;
+#endif
             break;
 
         case KEY_6:
@@ -284,10 +295,16 @@ static void processFKeyFunction(const KEY_Code_t Key, const bool beep)
 #endif
             } else {
 #endif
+#ifdef ENABLE_CW_MODULATOR
+                if (gTxVfo->Modulation == MODULATION_CW) {
+                    gEeprom.CW_BREAKIN_ENABLE = !gEeprom.CW_BREAKIN_ENABLE;
+                    gRequestSaveSettings = true;
+                    gUpdateStatus        = true;
+                    break;
+                }
+#endif
 #ifdef ENABLE_VOX
                 ACTION_Vox();
-//#else
-//              toggle_chan_scanlist();
 #endif
 #if defined(ENABLE_FEAT_F4HWN_OVERLAY_APPS) || defined(ENABLE_FEAT_F4HWN_GAME)
             }
@@ -297,11 +314,16 @@ static void processFKeyFunction(const KEY_Code_t Key, const bool beep)
 
         case KEY_8:
             if (!beep) {
-                ACTION_BackLightOnDemand(); 
+                ACTION_BackLightOnDemand();
             }
             else {
-                gTxVfo->FrequencyReverse = gTxVfo->FrequencyReverse == false;
-                gRequestSaveChannel = 1;
+#ifdef ENABLE_CW_MODULATOR
+                if (gTxVfo->Modulation != MODULATION_CW)
+#endif
+                {
+                    gTxVfo->FrequencyReverse = gTxVfo->FrequencyReverse == false;
+                    gRequestSaveChannel = 1;
+                }
             }
 
             break;
@@ -358,16 +380,16 @@ static void processFKeyFunction(const KEY_Code_t Key, const bool beep)
                 bool isKeySide1 = (Key == KEY_SIDE1);
                 uint8_t idx = FREQUENCY_GetSortedIdxFromStepIdx(gTxVfo->STEP_SETTING);
 
-                if ((isKeySide1 && idx < STEP_N_ELEM - 1) || (!isKeySide1 && idx > 0)) 
+                if ((isKeySide1 && idx < STEP_N_ELEM - 1) || (!isKeySide1 && idx > 0))
                 {
                     gTxVfo->STEP_SETTING = FREQUENCY_GetStepIdxFromSortedIdx(idx + (isKeySide1 ? 1 : -1));
-                    
+
                     if (IS_FREQ_CHANNEL(gTxVfo->CHANNEL_SAVE)) {
                         gRequestSaveChannel = 1;
                     }
                     gVfoConfigureMode = VFO_CONFIGURE;
                 }
-                
+
                 gWasFKeyPressed = false;
 
                 break;
@@ -414,7 +436,7 @@ void channelMove(uint16_t Channel)
     RADIO_ConfigureChannel(gEeprom.TX_VFO, gVfoConfigureMode);
 
     SETTINGS_SaveVfoIndices();
-    
+
     return;
 }
 
@@ -455,6 +477,36 @@ void channelMoveSwitch(void) {
     }
 }
 
+static void processFKeyLongFunction(const KEY_Code_t Key)
+{
+    gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
+
+    switch (Key) {
+#ifdef ENABLE_FMRADIO
+        case KEY_0:
+            ACTION_FM();
+            break;
+#endif
+
+        case KEY_4:
+            ACTION_SwitchFilter();
+            break;
+
+#if defined(ENABLE_CODE_PRACTICE) && defined(ENABLE_CW_MODULATOR)
+        case KEY_5:
+            // CPO_Enter borrows CW modulation itself, so practice is reachable
+            // from any mode.
+            CPO_Enter();
+            gRequestDisplayScreen = DISPLAY_CPO;
+            break;
+#endif
+
+        default:
+            gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
+            break;
+    }
+}
+
 static void MAIN_Key_DIGITS(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
     if (bKeyHeld) { // key held down
@@ -465,6 +517,15 @@ static void MAIN_Key_DIGITS(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
                     gRequestDisplayScreen = DISPLAY_MAIN;
                 }
 
+				#ifdef ENABLE_CW_MODULATOR
+				if (Key == KEY_8 && gTxVfo->Modulation == MODULATION_CW) {
+					gCW_CrossMode = !gCW_CrossMode;
+					gFlagReconfigureVfos = true;
+					gUpdateDisplay = true;
+					return;
+				}
+				#endif
+
 #ifdef ENABLE_FEAT_F4HWN_ACTION_PICKER
                 if (gWasFKeyPressed && (Key == KEY_SIDE1 || Key == KEY_SIDE2)) {
                     gActionPickerKey = (Key == KEY_SIDE1) ? 1 : 2;
@@ -474,6 +535,12 @@ static void MAIN_Key_DIGITS(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
                     return;
                 }
 #endif
+
+                if (gWasFKeyPressed) {
+                    HideFKeyIcon();
+                    processFKeyLongFunction(Key);
+                    return;
+                }
 
                 HideFKeyIcon();
 
@@ -578,7 +645,7 @@ static void MAIN_Key_DIGITS(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
             #ifdef ENABLE_VOICE
                 gAnotherVoiceID   = (VOICE_ID_t)Key;
             #endif
-            
+
             return;
         }
 
@@ -600,7 +667,7 @@ static void MAIN_Key_DIGITS(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
                 // do nothing
                 return;
             }
-            
+
             gKeyInputCountdown = key_input_timeout_500ms / (gInputBoxIndex >= totalDigits ? 16 : 3);
 
             if (gInputBoxIndex > totalDigits) {
@@ -813,7 +880,7 @@ static void MAIN_Key_MENU(bool bKeyPressed, bool bKeyHeld)
                 return;
             }
             #endif
-            
+
             gWasFKeyPressed = false;
 
             if (gScreenToDisplay == DISPLAY_MAIN) {
@@ -874,7 +941,7 @@ static void MAIN_Key_STAR(bool bKeyPressed, bool bKeyHeld)
 {
     if (gCurrentFunction == FUNCTION_TRANSMIT)
         return;
-    
+
     if (gInputBoxIndex) {
         if (!bKeyHeld && bKeyPressed)
             gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
@@ -896,7 +963,7 @@ static void MAIN_Key_STAR(bool bKeyPressed, bool bKeyHeld)
 
     if (bKeyHeld && !gWasFKeyPressed){ // long press
         if (!bKeyPressed) // released
-            return; 
+            return;
 
         /*
         #ifdef ENABLE_FEAT_F4HWN_RESUME_STATE
@@ -916,9 +983,16 @@ static void MAIN_Key_STAR(bool bKeyPressed, bool bKeyHeld)
         gBeepToPlay = BEEP_1KHZ_60MS_OPTIONAL;
         return;
     }
-    
+
     if (!gWasFKeyPressed) // pressed without the F-key
-    {   
+    {
+#ifdef ENABLE_CW_MODULATOR
+        // DTMF entry is meaningless in CW, so * opens RIT/XIT adjust instead
+        if (gTxVfo->Modulation == MODULATION_CW && gScanStateDir == SCAN_OFF) {
+            CW_RIT_EnterAdjust();
+            return;
+        }
+#endif
         if (gScanStateDir == SCAN_OFF
 #ifdef ENABLE_FEAT_F4HWN_FULL_WATCH
             && gEeprom.DUAL_WATCH != DUAL_WATCH_FULL
@@ -928,7 +1002,7 @@ static void MAIN_Key_STAR(bool bKeyPressed, bool bKeyHeld)
 #endif
 #ifdef ENABLE_SCAN_RANGES
             && gScanRangeStart == 0
-#endif      
+#endif
         )
         {   // start entering a DTMF string
             memcpy(gDTMF_InputBox, gDTMF_String, MIN(sizeof(gDTMF_InputBox), sizeof(gDTMF_String) - 1));
@@ -950,7 +1024,7 @@ static void MAIN_Key_STAR(bool bKeyPressed, bool bKeyHeld)
         if (IS_NOAA_CHANNEL(gTxVfo->CHANNEL_SAVE)) {
             gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
             return;
-        }               
+        }
 #endif
         if (gScanStateDir != SCAN_OFF) {
             // Stop the channel/frequency scan before saving the RX mode for the CTCSS/DCS scan.
@@ -965,7 +1039,7 @@ static void MAIN_Key_STAR(bool bKeyPressed, bool bKeyHeld)
         SCANNER_Start(true);
         gRequestDisplayScreen = DISPLAY_SCANNER;
     }
-    
+
     //gPttWasReleased = true; Fixed issue #138
     gUpdateStatus   = true;
 }
@@ -1031,7 +1105,12 @@ static void MAIN_Key_UP_DOWN(bool bKeyPressed, bool bKeyHeld, int8_t Direction)
                     return;
                 }
                 gTxVfo->freq_config_RX.Frequency = frequency;
-                BK4819_SetFrequency(frequency);
+                uint32_t rx_frequency = frequency;
+#ifdef ENABLE_CW_MODULATOR
+				rx_frequency = CW_RIT_RxFrequency(gTxVfo, rx_frequency); // CW BFO offset plus RIT
+#endif
+
+				BK4819_SetFrequency(rx_frequency);
                 BK4819_RX_TurnOn();
                 gRequestSaveChannel = 1;
                 return;
@@ -1079,6 +1158,11 @@ void MAIN_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
             gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
         return;
     }
+#endif
+
+#ifdef ENABLE_CW_MODULATOR
+    if (CW_Popup_ProcessKey(Key, bKeyPressed, bKeyHeld) || CW_RIT_ProcessKey(Key, bKeyPressed, bKeyHeld))
+        return;
 #endif
 
     if (gDTMF_InputMode && bKeyPressed && !bKeyHeld) {

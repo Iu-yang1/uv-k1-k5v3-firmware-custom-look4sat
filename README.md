@@ -1,6 +1,77 @@
-# Stats
+# Look4Sat on F4HWN v6.2.0 — development port
 
-![Alt](https://repobeats.axiom.co/api/embed/ecdd86aa536b716f088339a0c5ee734558f78c28.svg "Repobeats analytics image")
+This fork migrates the complete NR7Y CW and L4S control engines from
+`Be-Galaxy/uv-k1-k5v3-firmware-custom-l4s` (`8bae734e`) to F4HWN v6.2.0.
+The target is UV-K1 / UV-K5 V3 with the PY32F071 MCU, not the original UV-K5.
+This is a **local integration build**, not a hardware-validated stable release.
+
+- `L4S` builds a dedicated satellite/CW image with Multiboot, Multiconfig and
+  the 48-slot overlay loader. Normal Fusion, FieldOps, Transfer and Labs presets
+  remain separate; the satellite image does not include all their optional tools.
+- Retains USB CDC control, independent RX/TX Doppler targets, phone PTT, text CW,
+  F1–F8 synchronization, the 56-profile transactional store, native settings,
+  manual CW keying, Iambic A/B/Ultimatic/Bug, RIT/XIT and code practice.
+  Both frequencies remain fixed throughout transmission and resume afterward.
+- `Look4Sat.app` opens the native satellite page; `CWPractice.app` opens native
+  code practice. They delegate to the resident engines rather than loading a
+  second RF controller. They require this fork's append-only API level 3 and
+  capabilities, and are intentionally refused by unmodified Labs v6.2.0.
+  Existing API-1/2 apps retain the same ABI prefix and slot geometry; individual
+  apps still require their declared facilities (e.g. broadcast FM is not built
+  into the dedicated satellite preset).
+
+Exit other modal overlay apps before connecting CAT. Overlays cannot be launched
+during active satellite control, CW playback or profile commits, because their
+execution workspace is also the configuration-flash sector cache.
+
+Build firmware with `./compile-firmware.sh L4S` and modules with
+`./compile-app.sh l4s cwpractice`. Native Windows helpers are
+`tools/l4s/build-host.ps1` and `tools/l4s/build-apps.ps1`.
+
+Before testing, back up calibration, channels and L4S profiles. Use the v6.2.0
+Multiboot/UV Studio procedure with a free user slot; retain an official v6.2.0
+image for recovery. Do not restore a full old raw flash dump onto the new layout.
+Import satellite profiles using the phone's JSON preview/merge and confirm on
+the handset; synchronize F1–F8 separately. Four locally recorded legacy macros
+now use the per-bank physical reserve at `0x00B000`, not the old UV-K5 logical
+`0x1C00` addresses. Legacy CHIRP drivers included below are reference material,
+not drivers validated for this v6.2.0 port.
+
+No real-radio, RF spectral/timing, physical paddle, USB disconnect, power-loss
+or Multiboot hardware validation has been completed for this port. Software
+builds and host protocol simulations do not establish those results.
+
+## Legacy NR7Y documentation and attribution
+
+The following historical documentation and upstream download links describe the
+original NR7Y firmware, not a release of this development port.
+
+# NR7Y CW mod for F4HWN Fusion
+
+## 📦 [**Download prebuilt firmware to flash → Releases**](https://github.com/briand/uv-k1-k5v3-firmware-custom/releases)
+Pre-built `.uf2`/`.bin` files ready to flash are published every release, you don't need to compile them.
+
+## 📖 [**Documentation site →**](https://briand.github.io/cw-firmware-docs/)
+Full menu reference, rework guides now live here.
+
+This repository builds on the F4HWN codebase by adding a set of features specifically for CW operators.
+
+- High-speed RX/TX switching for realtime Morse code sending in true CW modulation
+- Automatic iambic keyer with A/B/Ultimatic/Bug modes
+- Internal paddle support with PTT/Side1 buttons
+- External paddle support with rework - allows direct connection of a standard paddle with no cable change
+- External paddle support with no rework through a custom USB cable
+- Macro message recording by keying and playback
+- Code Practice mode with optional flashlight LED sending
+
+> [!WARNING]
+> This firmware mod, perhaps more than some, changes the radio hardware behavior in significant ways. While every attempt is made to do this in a way that allows the hardware to operate properly and within spec for Amateur Radio service, no guarantee or warranty is given to any effect of proper performance nor against damage to the radio hardware itself. Use at your own risk.
+
+This firmware only supports the UVK5v3 or UVK1 Quansheng hardware. It does not work with the original UVK5 model; use the V1 mod firmware [here](https://github.com/briand/uv-k5-firmware-custom-cw) instead for v1 radios.
+
+This code is available under the Apache 2.0 License as is the work of giants that it builds upon.
+
+--- The F4HWN README contents follow ---
 
 # F4HWN firmware port for the UV-K1 and UV-K5 V3 using the PY32F071 MCU
 

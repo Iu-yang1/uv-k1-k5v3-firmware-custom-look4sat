@@ -21,6 +21,9 @@
 #include <stdint.h>
 
 void UI_DisplayReleaseKeys(void);
+#ifdef ENABLE_CW_MODULATOR
+void UI_DisplayReleasePaddle(void);
+#endif
 void UI_DisplayWelcome(void);
 
 #ifdef ENABLE_FEAT_F4HWN_LOGO

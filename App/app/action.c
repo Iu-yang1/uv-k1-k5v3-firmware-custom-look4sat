@@ -58,6 +58,15 @@
     #include "ui/menu.h"
 #endif
 
+#ifdef ENABLE_CW_MODULATOR
+#include "app/cwkeyer.h"
+#include "app/cwpopup.h"
+
+    #ifdef ENABLE_CODE_PRACTICE
+        #include "app/cpo.h"
+    #endif
+#endif
+
 #if defined(ENABLE_FEAT_F4HWN_OVERLAY_APPS) && !defined(ENABLE_FEAT_F4HWN_BEAM)
 static void ACTION_Beam(void);
 #endif
@@ -75,6 +84,22 @@ static void ACTION_1750(void);
 #endif
 
 inline static void ACTION_ScanRestart() { ACTION_Scan(true); };
+
+#ifdef ENABLE_CW_MODULATOR
+static void ACTION_PlayCWMsg1(void);
+static void ACTION_PlayCWMsg2(void);
+static void ACTION_PlayCWMsg3(void);
+static void ACTION_PlayCWMsg4(void);
+static void ACTION_RepeatCWMsg1(void);
+static void ACTION_RepeatCWMsg2(void);
+static void ACTION_RepeatCWMsg3(void);
+static void ACTION_RepeatCWMsg4(void);
+static void ACTION_CWProperRoger(void);
+static void ACTION_CWBreakIn(void);
+#ifdef ENABLE_CODE_PRACTICE
+static void ACTION_CPO(void);
+#endif
+#endif
 
 void (*const action_opt_table[ACTION_OPT_LEN])(void) = {
     [ACTION_OPT_NONE] = &FUNCTION_NOP,
@@ -100,6 +125,25 @@ void (*const action_opt_table[ACTION_OPT_LEN])(void) = {
 
 #ifdef ENABLE_TX1750
     [ACTION_OPT_1750] = &ACTION_1750,
+#endif
+
+#ifdef ENABLE_CW_MODULATOR
+    [ACTION_OPT_PLAY_CWMSG1] = &ACTION_PlayCWMsg1,
+	[ACTION_OPT_PLAY_CWMSG2] = &ACTION_PlayCWMsg2,
+	[ACTION_OPT_PLAY_CWMSG3] = &ACTION_PlayCWMsg3,
+	[ACTION_OPT_PLAY_CWMSG4] = &ACTION_PlayCWMsg4,
+	[ACTION_OPT_REPEAT_CWMSG1] = &ACTION_RepeatCWMsg1,
+	[ACTION_OPT_REPEAT_CWMSG2] = &ACTION_RepeatCWMsg2,
+	[ACTION_OPT_REPEAT_CWMSG3] = &ACTION_RepeatCWMsg3,
+	[ACTION_OPT_REPEAT_CWMSG4] = &ACTION_RepeatCWMsg4,
+    #ifdef ENABLE_CODE_PRACTICE
+    [ACTION_OPT_CPO] = &ACTION_CPO,
+	#endif
+	[ACTION_OPT_CW_KEYER_MODE] = &CW_Popup_StepKeyerMode,
+	[ACTION_OPT_CW_PROPER_ROGER] = &ACTION_CWProperRoger,
+	[ACTION_OPT_CW_SPEED] = &CW_Popup_Speed,
+	[ACTION_OPT_CW_KEY_INPUT] = &CW_Popup_StepKeyInput,
+	[ACTION_OPT_CW_BREAK_IN] = &ACTION_CWBreakIn,
 #endif
 
 #ifdef ENABLE_FEAT_F4HWN
@@ -201,7 +245,15 @@ void ACTION_Monitor(void)
         if (IS_NOAA_CHANNEL(gRxVfo->CHANNEL_SAVE) && gIsNoaaMode)
             gNoaaChannel = gRxVfo->CHANNEL_SAVE - NOAA_CHANNEL_FIRST;
 #endif
+#ifdef ENABLE_CW_MODULATOR
+        if (gRxVfo->Modulation == MODULATION_CW || gRxVfo->Modulation == MODULATION_USB)
+            gMonitor = true;
+#endif
         RADIO_SetupRegisters(true);
+#ifdef ENABLE_CW_MODULATOR
+        if (gMonitor)
+            BK4819_ToggleGpioOut(BK4819_GPIO6_PIN2_GREEN, true);
+#endif
         APP_StartListening(FUNCTION_MONITOR);
         return;
     }
@@ -222,6 +274,20 @@ void ACTION_Monitor(void)
 #endif
 
     RADIO_SetupRegisters(true);
+
+#ifdef ENABLE_CW_MODULATOR
+    // Silence the physical speaker amp BEFORE touching BK4819's AF mode
+    // below, so any REG_47 mux transient settles with the amp already off.
+    if (gRxVfo->Modulation == MODULATION_CW || gRxVfo->Modulation == MODULATION_USB) {
+        AUDIO_AudioPathOff();
+        gEnableSpeaker = false;
+    }
+#endif
+
+    // This close-squelch branch calls RADIO_SetupRegisters()
+    // directly instead of going through APP_StartListening().
+    // AF deliberately stays in the BASEBAND2 mode afterward.
+    RADIO_SetModulation(gRxVfo->Modulation);
 
 #ifdef ENABLE_FMRADIO_EMBEDDED
     if (gFmRadioMode) {
@@ -327,6 +393,46 @@ void ACTION_SwitchDemodul(void)
 
     if(gTxVfo->Modulation == MODULATION_UKNOWN)
         gTxVfo->Modulation = MODULATION_FM;
+
+#ifdef ENABLE_CW_MODULATOR
+	// Arm/dearm keyer ownership immediately so a very quick PTT press after
+	// switching to CW cannot beat deferred reconfigure/save paths.
+	CW_KeyerReconfigure(gTxVfo->Modulation == MODULATION_CW);
+
+	// CW/USB default to monitor mode (open squelch); other modes start squelched.
+	gMonitor = (gTxVfo->Modulation == MODULATION_CW ||
+	            gTxVfo->Modulation == MODULATION_USB);
+
+	// Reconfigure radio path now (not only on later key release/save handling).
+	gFlagReconfigureVfos = true;
+#endif
+
+
+}
+
+// CW and USB have a single filter, so there's nothing to switch
+static void RefuseFilterSwitch(void)
+{
+#ifdef ENABLE_CW_MODULATOR
+	CW_ErrorBeep();  // a sidetone dit in CW, the double beep elsewhere
+#else
+	gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
+#endif
+}
+
+void ACTION_SwitchFilter(void)
+{
+	if (!RADIO_HasFilterChoice(gTxVfo)) {
+		RefuseFilterSwitch();
+		return;
+	}
+
+	// One bit, so this is a straight toggle. What wide and narrow resolve to
+	// depends on the modulation - see RADIO_ResolveFilter().
+	gTxVfo->CHANNEL_BANDWIDTH = (gTxVfo->CHANNEL_BANDWIDTH == BANDWIDTH_WIDE)
+		? BANDWIDTH_NARROW : BANDWIDTH_WIDE;
+	gRequestSaveChannel  = 1;
+	gFlagReconfigureVfos = true;
 }
 
 
@@ -449,6 +555,13 @@ bool ACTION_PickerProcessKey(KEY_Code_t key, bool isPressed, bool isHeld)
 
 void ACTION_Handle(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
 {
+#ifdef ENABLE_CW_MODULATOR
+    // paranoid block: keyer owns SIDE1 (we shouldn't ever get this far)
+    if (Key == KEY_SIDE1 && gCW_KeyerUsingSD1) {
+        return;
+    }
+#endif
+
     HideFKeyIcon();
 
     if (gScreenToDisplay == DISPLAY_MAIN && gDTMF_InputMode){
@@ -502,12 +615,16 @@ void ACTION_Handle(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld)
             break;
     }
 
-    if (bKeyHeld != bKeyPressed) { // button pushed or released after hold 
+    if (bKeyHeld != bKeyPressed) { // button pushed or released after hold
                                    // (!bKeyHeld && bKeyPressed) or (bKeyHeld && !bKeyPressed)
         return;
     }
 
     // held or released after short press
+#ifdef ENABLE_CW_MODULATOR
+    CW_Popup_OnAction(func);
+#endif
+
     ACTION_Execute(func);
 }
 
@@ -566,7 +683,7 @@ void ACTION_FM(void)
     ACTION_LaunchApp(APP_SHORTCUT_FM);
     return;
 #else
-    if (gCurrentFunction != FUNCTION_TRANSMIT && gCurrentFunction != FUNCTION_MONITOR)
+    if (gCurrentFunction != FUNCTION_TRANSMIT)
     {
         gInputBoxIndex = 0;
 
@@ -574,6 +691,11 @@ void ACTION_FM(void)
             FM_TurnOff();
             gFlagReconfigureVfos  = true;
             gRequestDisplayScreen = DISPLAY_MAIN;
+
+#ifdef ENABLE_CW_MODULATOR
+            // Re-arm the keyer if we're returning to a CW channel.
+            CW_KeyerReconfigure(gTxVfo->Modulation == MODULATION_CW);
+#endif
 
 #ifdef ENABLE_VOX
             gVoxResumeCountdown = 80;
@@ -598,6 +720,19 @@ void ACTION_FM(void)
         }
 
         RADIO_SelectVfos();
+
+        // Both of these have to happen AFTER RADIO_SelectVfos(), which re-asserts
+        // gMonitor and re-arms the keyer for CW/USB channels - doing them first
+        // just gets the work undone.
+        gMonitor = false;
+#ifdef ENABLE_CW_MODULATOR
+        // Park the keyer before handing the radio to the BK1080. CW_AppUpdate()
+        // keys on gTxVfo->Modulation, not on gFmRadioMode, so an armed keyer
+        // would otherwise still be polling paddles - and still holding PA10 -
+        // while the user is listening to broadcast FM.
+        CW_KeyerReconfigure(false);
+#endif
+
         RADIO_SetupRegisters(true);
 
         FM_Start();
@@ -649,6 +784,77 @@ static void ACTION_Scan_FM(bool bRestart)
 }
 #endif
 
+#endif
+
+#ifdef ENABLE_CW_MODULATOR
+
+#ifdef ENABLE_CODE_PRACTICE
+
+static void ACTION_CPO(void)
+{
+    CPO_Enter();
+}
+
+#endif
+
+static void ACTION_PlayCWMsg1(void)
+{
+	CW_StartMacroPlayback(0, false);
+}
+
+static void ACTION_PlayCWMsg2(void)
+{
+	CW_StartMacroPlayback(1, false);
+}
+
+static void ACTION_PlayCWMsg3(void)
+{
+	CW_StartMacroPlayback(2, false);
+}
+
+static void ACTION_PlayCWMsg4(void)
+{
+	CW_StartMacroPlayback(3, false);
+}
+
+static void ACTION_RepeatCWMsg1(void)
+{
+	CW_StartMacroPlayback(0, true);
+}
+
+static void ACTION_RepeatCWMsg2(void)
+{
+	CW_StartMacroPlayback(1, true);
+}
+
+static void ACTION_RepeatCWMsg3(void)
+{
+	CW_StartMacroPlayback(2, true);
+}
+
+static void ACTION_RepeatCWMsg4(void)
+{
+	CW_StartMacroPlayback(3, true);
+}
+
+// Same toggle as F+7 in CW; the status bar icon shows the new state
+static void ACTION_CWBreakIn(void)
+{
+	gEeprom.CW_BREAKIN_ENABLE = !gEeprom.CW_BREAKIN_ENABLE;
+	gRequestSaveSettings = true;
+	gUpdateStatus = true;
+}
+
+static void ACTION_CWProperRoger(void)
+{
+	// playback only drives the keyer in CW mode, same rule as playing from the menu
+	if (gTxVfo->Modulation != MODULATION_CW) {
+		gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
+		return;
+	}
+
+	CW_StartProperRoger();
+}
 #endif
 
 
@@ -782,11 +988,21 @@ void ACTION_Wn(void)
     const bool isRx = FUNCTION_IsRx();
     VFO_Info_t *pVfo = isRx ? gRxVfo : gTxVfo;
 
+    if (!RADIO_HasFilterChoice(pVfo)) {
+        RefuseFilterSwitch();
+        return;
+    }
+
     pVfo->CHANNEL_BANDWIDTH = !pVfo->CHANNEL_BANDWIDTH;
 
-    if (pVfo->Modulation == MODULATION_AM)
+    // These read the bit through RADIO_ResolveFilter()
+    if (pVfo->Modulation == MODULATION_AM || pVfo->Modulation == MODULATION_USB
+#ifdef ENABLE_CW_MODULATOR
+        || pVfo->Modulation == MODULATION_CW
+#endif
+    )
     {
-        BK4819_SetFilterBandwidth(RADIO_GetAMFilterBandwidth(pVfo), true);
+        BK4819_SetFilterBandwidth(RADIO_ResolveFilter(pVfo), true);
         return;
     }
 
@@ -795,7 +1011,7 @@ void ACTION_Wn(void)
     #ifdef ENABLE_FEAT_F4HWN_NARROWER
         if (isRx && bw == BANDWIDTH_NARROW && gSetting_set_nfm == 1)
         {
-            bw++; 
+            bw++;
         }
     #endif
 
@@ -831,7 +1047,7 @@ void ACTION_BackLightOnDemand(void)
             gEeprom.BACKLIGHT_TIME = 61;
         }
     }
-    
+
     BACKLIGHT_TurnOn();
 }
 

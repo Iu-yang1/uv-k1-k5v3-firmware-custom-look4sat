@@ -24,14 +24,19 @@
 #include "driver/bk4819.h"
 #include "frequencies.h"
 
+int16_t RADIO_GetRssiCorrection(void);
+
 enum {
     RADIO_CHANNEL_UP   = 0x01u,
     RADIO_CHANNEL_DOWN = 0xFFu,
 };
 
+// Stored per-channel filter selection. Schema 2 keeps this to a single bit:
+// it means "wide" or "narrow" and nothing more. What those resolve to in
+// kilohertz is decided per modulation by RADIO_ResolveFilter().
 enum {
-    BANDWIDTH_WIDE = 0,
-    BANDWIDTH_NARROW
+	BANDWIDTH_WIDE = 0,
+	BANDWIDTH_NARROW,
 };
 
 enum PTT_ID_t {
@@ -59,6 +64,10 @@ typedef enum {
     MODULATION_FM,
     MODULATION_AM,
     MODULATION_USB,
+
+#ifdef ENABLE_CW_MODULATOR
+	MODULATION_CW,
+#endif
 
 #ifdef ENABLE_BYP_RAW_DEMODULATORS
     MODULATION_BYP,
@@ -167,7 +176,12 @@ void     RADIO_SetupRegisters(bool switchToForeground);
 #ifdef ENABLE_NOAA
     void RADIO_ConfigureNOAA(void);
 #endif
-BK4819_FilterBandwidth_t RADIO_GetAMFilterBandwidth(const VFO_Info_t *pVfo);
+BK4819_FilterBandwidth_t RADIO_ResolveFilter(const VFO_Info_t *pVfo);
+#ifdef ENABLE_EXTRA_FILTER
+bool     RADIO_HasFilterChoice(const VFO_Info_t *pVfo);  // false for CW and USB, which have one filter
+#else
+static inline bool RADIO_HasFilterChoice(const VFO_Info_t *pVfo) { (void)pVfo; return true; }
+#endif
 void     RADIO_SetTxParameters(void);
 void     RADIO_SetupAGC(bool listeningAM, bool disable);
 void     RADIO_SetModulation(ModulationMode_t modulation);
@@ -176,5 +190,10 @@ void     RADIO_PrepareTX(void);
 void     RADIO_SendCssTail(void);
 void     RADIO_PrepareCssTX(void);
 void     RADIO_SendEndOfTransmission(void);
+
+#ifdef ENABLE_CW_MODULATOR
+void     RADIO_CW_Suspend(void);
+void     RADIO_CW_BeginResume(void);
+#endif
 
 #endif

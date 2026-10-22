@@ -161,6 +161,21 @@ enum
     MENU_F2LONG,
     MENU_MLONG,
     MENU_BATTYP,
+#ifdef ENABLE_CW_MODULATOR
+	MENU_CW_FREQ,
+	MENU_CW_SIDETONE_LEVEL,
+	MENU_CW_KEYER_MODE,
+	MENU_CW_KEY_WPM,
+	MENU_CW_KEY_INPUT,
+	MENU_CW_MSG1,
+	MENU_CW_MSG2,
+	MENU_CW_MSG3,
+	MENU_CW_MSG4,
+	MENU_CW_MSG_REPEAT,
+	MENU_CW_ROGER_DITS,
+	MENU_CW_BKIN,
+	MENU_CW_HANG,
+#endif
 #if defined(ENABLE_FEAT_F4HWN) && defined(ENABLE_FEAT_F4HWN_LOGO_SAV)
     MENU_SET_SAV
 #endif
@@ -169,7 +184,10 @@ enum
 #ifdef ENABLE_FEAT_F4HWN_MENU_CAT
 // Categories (niveau 1) — l'ordre = ordre d'affichage de l'ecran des categories.
 enum {
-    CAT_CHANNELS = 0,
+#ifdef ENABLE_CW_MODULATOR
+    CAT_CW,        // edition CW : la categorie CW passe en tete
+#endif
+    CAT_CHANNELS,
     CAT_SCAN,
     CAT_KEYS,
     CAT_POWER,
@@ -210,6 +228,11 @@ extern const char* const            gSubMenu_TOT[11];
 extern const char* const            gSubMenu_RXMode[6];
 #else
 extern const char* const            gSubMenu_RXMode[4];
+#endif
+
+const char* const *UI_MENU_FilterLabels(void);
+#ifdef ENABLE_EXTRA_FILTER
+extern const char* const gSubMenu_W_N_SSB[1];
 #endif
 
 #ifdef ENABLE_VOICE
@@ -270,6 +293,13 @@ extern const char* const            gSubMenu_SET_NAV[2];
 #define SIDEFUNCTION_COUNT ACTION_OPT_LEN
 extern const char *const gSubMenu_SIDEFUNCTIONS[ACTION_OPT_LEN];
                          
+extern const char		gSubmenu_SIDETONE[9][6];
+extern const char*        gSubMenu_CW_KEY_BUTTON[3];
+extern const char*        gSubMenu_CW_KEY_PORT[3];
+#ifdef ENABLE_CW_MODULATOR
+extern const char*        gSubMenu_CW_KEY_INPUT[11];
+#endif
+
 extern bool              gIsInSubMenu;
                          
 extern uint8_t           gMenuCursor;

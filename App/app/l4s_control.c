@@ -468,7 +468,7 @@ bool L4S_LocalKey(KEY_Code_t key, bool pressed, bool held)
             return true;
         }
         if(key==KEY_SIDE1){if(!state.tx_window_open&&can_retune()){if(pressed){gMonitor=true;APP_StartListening(FUNCTION_MONITOR);}else setup_receive();}return true;}
-        if(pressed&&!held&&key>=KEY_1&&key<=KEY_8&&state.tx_mode==L4S_CW_MODE){
+        if(pressed&&!held&&key>=KEY_1&&key<=KEY_4&&state.tx_mode==L4S_CW_MODE){
             uint8_t text[L4S_MACRO_TEXT];uint8_t n=L4S_MacrosRead(&macros,key-KEY_1,text);
             state.error=n?L4S_LocalCw(&state,text,n,millis()):L4S_NOT_READY;
             if(state.error==L4S_ACCEPTED)state.error=0;

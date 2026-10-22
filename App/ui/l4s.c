@@ -36,8 +36,8 @@ void UI_DisplayL4s(void)
     const L4S_Store *store=L4S_GetStore();
     const L4S_Macros *macros=L4S_GetMacros();
     if(L4S_MacrosBusy(macros)){
-        UI_PrintStringSmallNormal(macros->phase==L4S_MACRO_CONFIRM ? "SAVE F1-F8?" : "SYNC F1-F8",0,127,0);
-        UI_PrintStringSmallNormal("8 SLOTS / 92 CHARS",0,0,2);
+        UI_PrintStringSmallNormal(macros->phase==L4S_MACRO_CONFIRM ? "SAVE F1-F4?" : "SYNC F1-F4",0,127,0);
+        UI_PrintStringSmallNormal("4 SLOTS / 92 CHARS",0,0,2);
         UI_PrintStringSmallNormal(macros->phase==L4S_MACRO_CONFIRM ? "MENU:SAVE EXIT:NO" : "EXIT:CANCEL",0,0,6);
         ST7565_BlitFullScreen();return;
     }

@@ -31,7 +31,7 @@ class Alpha8Test(unittest.TestCase):
     def stage(self,text=b'CQ',transaction=1):
         generation=self.lib.Host_MacrosGeneration()
         self.assertEqual(1,self.send(MACROS,b'\1'+struct.pack('<II',generation,transaction))[5])
-        for i in range(8):
+        for i in range(4):
             value=text+str(i+1).encode()
             self.assertEqual(0,self.send(MACROS,bytes([2,i,len(value)])+value)[5])
         self.assertEqual(1,self.send(MACROS,b'\3')[5])
@@ -49,14 +49,14 @@ class Alpha8Test(unittest.TestCase):
     def save(self,text=b'CQ',transaction=1):
         self.stage(text,transaction);self.lib.Host_MacrosConfirm();self.pump()
 
-    def test_macro_batch_waits_for_local_confirmation_and_restores_all_eight(self):
+    def test_macro_batch_waits_for_local_confirmation_and_restores_all_four(self):
         before=bytes(self.lib.Host_SatelliteData()[:3584])
         self.stage()
         self.assertEqual(0,self.lib.Host_MacrosErases());self.assertEqual(0,self.lib.Host_MacrosWrites())
         self.assertEqual(2,self.lib.Host_MacrosPhase())
         self.lib.Host_MacrosConfirm();self.pump();self.lib.Host_MacrosRestart()
         self.assertEqual(1,self.lib.Host_MacrosGeneration())
-        for i in range(8):self.assertEqual(b'CQ'+str(i+1).encode(),self.slot(i))
+        for i in range(4):self.assertEqual(b'CQ'+str(i+1).encode(),self.slot(i))
         self.assertEqual(before,bytes(self.lib.Host_SatelliteData()[:3584]))
 
     def test_power_loss_after_every_write_step_keeps_complete_old_or_new_batch(self):
@@ -65,9 +65,9 @@ class Alpha8Test(unittest.TestCase):
             self.stage(b'NEW',2);self.lib.Host_MacrosConfirm()
             for _ in range(interruption):self.now+=10;self.lib.Host_MacrosTick(self.now,self.session)
             self.lib.Host_MacrosRestart()
-            values=[self.slot(i) for i in range(8)]
-            self.assertIn(values,[[b'OLD'+str(i+1).encode() for i in range(8)],
-                                  [b'NEW'+str(i+1).encode() for i in range(8)]],interruption)
+            values=[self.slot(i) for i in range(4)]
+            self.assertIn(values,[[b'OLD'+str(i+1).encode() for i in range(4)],
+                                  [b'NEW'+str(i+1).encode() for i in range(4)]],interruption)
 
     def test_partial_program_cancel_disconnect_and_unknown_flash_are_safe(self):
         self.save(b'OLD');self.stage(b'NEW',2);self.lib.Host_MacrosCut(7)
@@ -90,6 +90,32 @@ class Alpha8Test(unittest.TestCase):
         self.assertEqual(b'',self.slot())
         memory[256]=3;memory[257]=ord('!')
         self.assertEqual(b'',self.slot())
+
+    def test_legacy_eight_slot_bank_is_read_without_writing_and_migrates_on_confirmation(self):
+        records=b''.join(bytes([3])+('CQ'+str(i+1)).encode()+bytes(92) for i in range(8))
+        header=bytearray(b'\xff'*256)
+        header[:8]=b'L4MC'+bytes([1,8,92,0])
+        struct.pack_into('<I',header,8,7)
+        struct.pack_into('<H',header,12,crc(records))
+        struct.pack_into('<H',header,14,crc(header[:14]))
+        header[31]=0xa5
+        memory=self.lib.Host_MacrosData()
+        for i,value in enumerate(header+records):memory[i]=value
+        self.lib.Host_MacrosRestart()
+        self.assertEqual(7,self.lib.Host_MacrosGeneration())
+        self.assertEqual(0,self.lib.Host_MacrosWrites())
+        for i in range(4):self.assertEqual(('CQ'+str(i+1)).encode(),self.slot(i))
+        self.assertEqual(2,self.send(MACROS,b'\0\4')[5])
+        self.save(b'NEW',10)
+        self.lib.Host_MacrosRestart()
+        self.assertEqual(8,self.lib.Host_MacrosGeneration())
+        self.assertEqual(4,memory[4096+5])
+        for i in range(4):self.assertEqual(('NEW'+str(i+1)).encode(),self.slot(i))
+
+    def test_hello_advertises_four_slots_and_fifth_slot_is_rejected(self):
+        hello=self.send(HELLO)
+        self.assertTrue(struct.unpack_from('<I',hello,17)[0] & 16384)
+        self.assertEqual(2,self.send(MACROS,b'\0\4')[5])
 
     def test_profile_switch_clears_old_pass_countdown(self):
         self.send(PASS_INFO,b'\1'+struct.pack('<I',65));self.select()

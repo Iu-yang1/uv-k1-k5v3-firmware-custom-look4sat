@@ -311,7 +311,7 @@ size_t L4S_Handle(L4S_State *s, const uint8_t *body, size_t length, uint32_t now
         uint32_t features=L4S_CAP_PAIR|L4S_CAP_PTT|L4S_CAP_CW|L4S_CAP_TONE|L4S_CAP_CONTEXT|L4S_CAP_SETTINGS|L4S_CAP_PROFILES|L4S_CAP_STORE;
         features|=L4S_CAP_DIAGNOSTICS|L4S_CAP_PASS_INFO;
         if(s->ops->apply_settings)features|=L4S_CAP_CW_OPTIONS;
-        if(s->ops->macros)features|=L4S_CAP_MACROS;
+        if(s->ops->macros)features|=L4S_CAP_MACROS|L4S_CAP_FOUR_MACROS;
         L4S_Write32(p+5,features);
         L4S_Write16(p+9,10); p[11]=L4S_MAX_TEXT; p[12]=10; p[13]=45;
         L4S_Write16(p+14,L4S_TIMEOUT_MS);

@@ -3,6 +3,7 @@ import re
 import struct
 import unittest
 import zlib
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -14,6 +15,23 @@ def define(path, name):
 
 
 class PortLayoutTest(unittest.TestCase):
+    def test_l4s_preset_restores_nr7y_cw_menu_categories_and_layout(self):
+        presets=json.loads((ROOT/'CMakePresets.json').read_text(encoding='utf-8'))
+        options=next(p['cacheVariables'] for p in presets['configurePresets'] if p['name']=='L4S')
+        self.assertTrue(options['ENABLE_FEAT_F4HWN_MENU_CAT'])
+        self.assertTrue(options['ENABLE_CUSTOM_MENU_LAYOUT'])
+        self.assertTrue(options['ENABLE_FEAT_NR7Y_CW'])
+        source=(ROOT/'App/ui/menu.c').read_text(encoding='utf-8')
+        category=source.split('static const uint8_t CatCw[] = {',1)[1].split('};',1)[0]
+        for name in ('FREQ','SIDETONE_LEVEL','KEYER_MODE','KEY_WPM','KEY_INPUT','BKIN','HANG','MSG1','MSG2','MSG3','MSG4','MSG_REPEAT','ROGER_DITS'):
+            self.assertIn('MENU_CW_'+name,category)
+
+    def test_shared_profile_and_macro_banks_do_not_follow_config_bank_offsets(self):
+        boundary=define('App/driver/py25q16.h','PY25Q16_BANK_SHARED_FROM')
+        for path,names in [('App/app/l4s_store.h',('L4S_BANK_A','L4S_BANK_B')),
+                           ('App/app/l4s_macros.h',('L4S_MACRO_A','L4S_MACRO_B'))]:
+            for name in names:self.assertGreaterEqual(define(path,name),boundary)
+        self.assertEqual(4,define('App/app/l4s_macros.h','L4S_MACRO_SLOTS'))
     def test_deliverable_image_including_ram_stub_fits_the_multiboot_slot(self):
         binary = ROOT / "build/L4S/look4sat.f4hwn620.bin"
         self.assertTrue(binary.is_file())

@@ -164,7 +164,7 @@
             "cacheVariables": {
                 "EDITION_STRING": "Look4Sat",
                 "TARGET": "look4sat.f4hwn620",
-                "VERSION_STRING_2": "v6.2.0-l4s-dev",
+                "VERSION_STRING_2": "v6.2.0-l4s-dev2",
                 "ENABLE_VOX": false,
                 "ENABLE_FMRADIO": false,
                 "ENABLE_SMALL_BOLD": false,

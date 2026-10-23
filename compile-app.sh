@@ -15,7 +15,7 @@
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
-IMAGE=uvk1-uvk5v3
+IMAGE=uvk1-uvk5v3-apps-13.3
 APPS_DIR=App/apps
 OUT_DIR=build/Apps
 OVERLAY_MAX=4096
@@ -60,7 +60,9 @@ fi
 
 command -v docker >/dev/null 2>&1 || { echo "❌ docker not found"; exit 1; }
 if [[ "$(docker images -q "$IMAGE")" == "" ]]; then
-    echo "🐳 Building Docker image..."; docker build -q -t "$IMAGE" . >/dev/null
+    echo "🐳 Building Docker image..."
+    docker build -q -t "$IMAGE" --build-arg ARM_GCC_VERSION=13.3.rel1 \
+        --build-arg ARM_GCC_DOWNLOAD_DIRECTORY=Files . >/dev/null
 fi
 mkdir -p "$OUT_DIR"
 

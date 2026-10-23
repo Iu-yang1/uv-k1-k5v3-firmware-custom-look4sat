@@ -39,7 +39,8 @@ for example, is not included in the dedicated L4S image.
 Exit other modal apps before connecting CAT.
 
 Build firmware: `./compile-firmware.sh L4S`; modules:
-`./compile-app.sh l4s cwpractice`. The primary Docker build uses ARM GNU 15.2.
+`./compile-app.sh l4s cwpractice`. Firmware Docker uses ARM GNU 15.2; overlay
+Docker retains upstream ARM GNU 13.3 to respect the 4 KiB module budget.
 Windows helpers: `tools/l4s/build-host.ps1` and `tools/l4s/build-apps.ps1`.
 
 Automated host regressions, image-size and Multiboot RAM-stub isolation checks

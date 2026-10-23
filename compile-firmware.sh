@@ -183,7 +183,14 @@ build_preset() {
     return "$status"
   fi
 
-  bin_file="build/${preset}/f4hwn.${preset_slug}.bin"
+  # The L4S target (and custom presets) need not use the f4hwn.<preset> stem.
+  local target_name
+  target_name="$(sed -n 's/^TARGET:[^=]*=//p' "build/${preset}/CMakeCache.txt" | tr -d '\r' | tail -n 1)"
+  if [[ ! "$target_name" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+    echo "❌ Invalid or missing TARGET in build/${preset}/CMakeCache.txt"
+    return 1
+  fi
+  bin_file="build/${preset}/${target_name}.bin"
   if [[ -z "$bin_file" || ! -f "$bin_file" ]]; then
     if (( QUIET )); then
       printf "❌ FAILED\n"

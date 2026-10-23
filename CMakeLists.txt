@@ -20,6 +20,8 @@ message("Build type: " ${CMAKE_BUILD_TYPE})
 enable_language(C ASM)
 
 option(DEV "Prepare the rolling Fusion development firmware" OFF)
+option(ENABLE_OVERLAY_RX_AUDIO "Resident overlay RX audio capture" ON)
+option(ENABLE_OVERLAY_HANDOFF "Resident overlay application hand-off" ON)
 
 find_package(Git QUIET)
 set(BUILD_COMMIT "unknown")
@@ -126,7 +128,8 @@ if(ENABLE_LTO)
 endif()
 
 if(ENABLE_L4S_CONTROL)
-    target_compile_options(${EXE_NAME} PRIVATE -Oz)
+    target_compile_options(${EXE_NAME} PRIVATE -Oz -fno-inline-small-functions)
+    target_link_options(${EXE_NAME} PRIVATE -flto-partition=one -fno-inline-small-functions)
 endif()
 
 if(ENABLE_LTO AND ENABLE_FEAT_F4HWN_MULTIBOOT_OVERLAY)

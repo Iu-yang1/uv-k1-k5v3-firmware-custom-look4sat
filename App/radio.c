@@ -1136,7 +1136,9 @@ void RADIO_SetupRegisters(bool switchToForeground)
     }
 #endif
 
-void RADIO_SetTxParameters(void)
+/* fm false (CW Keyer): no settling waits and PA_ENABLE left off, the caller
+ * re-locks the PLL and keys the PA itself. */
+static void RADIO_SetTxParametersEx(bool fm)
 {
 	const BK4819_FilterBandwidth_t Bandwidth = RADIO_ResolveFilter(gCurrentVfo);
 
@@ -1180,7 +1182,7 @@ void RADIO_SetTxParameters(void)
 
     BK4819_PickRXFilterPathBasedOnFrequency(gCurrentVfo->pTX->Frequency);
 
-    BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE, true);
+    BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE, fm);
 
 #ifdef ENABLE_CW_MODULATOR
 	SYSTEM_DelayMs(gTxVfo->Modulation == MODULATION_CW ? 1 : 5);
@@ -1212,6 +1214,16 @@ void RADIO_SetTxParameters(void)
             BK4819_SetCDCSSCodeWord(DCS_GetGolayCodeWord(gCurrentVfo->pTX->CodeType, gCurrentVfo->pTX->Code));
             break;
     }
+}
+
+void RADIO_SetTxParameters(void)
+{
+    RADIO_SetTxParametersEx(true);
+}
+
+void RADIO_PrepareTx(void)
+{
+    RADIO_SetTxParametersEx(false);
 }
 
 void RADIO_SetModulation(ModulationMode_t modulation)

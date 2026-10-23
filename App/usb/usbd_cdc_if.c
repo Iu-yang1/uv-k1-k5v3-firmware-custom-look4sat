@@ -96,6 +96,11 @@ USB_MEM_ALIGNX uint8_t read_buffer[128];
 
 static cdc_acm_rx_buf_t client_rx_buf = {0};
 
+#ifdef ENABLE_FEAT_F4HWN_OVERLAY_APPS
+volatile uint32_t cdc_acm_rx_total = 0;
+volatile uint8_t cdc_acm_config_count = 0;
+#endif
+
 volatile bool ep_tx_busy_flag = false;
 
 #ifdef CONFIG_USB_HS
@@ -106,6 +111,9 @@ volatile bool ep_tx_busy_flag = false;
 
 void usbd_configure_done_callback(void)
 {
+#ifdef ENABLE_FEAT_F4HWN_OVERLAY_APPS
+    cdc_acm_config_count++;
+#endif
 #ifdef ENABLE_L4S_CONTROL
     ep_tx_busy_flag=false;
     L4S_ReplyComplete(&l4s_reply); /* Reconfiguration cancels the old endpoint transfer. */
@@ -120,6 +128,9 @@ void usbd_cdc_acm_bulk_out(uint8_t ep, uint32_t nbytes)
     if (nbytes && rx_buf->buf)
     {
         const uint8_t *buf = read_buffer;
+#ifdef ENABLE_FEAT_F4HWN_OVERLAY_APPS
+        cdc_acm_rx_total += nbytes;
+#endif
         uint32_t pointer = *rx_buf->write_pointer;
         while (nbytes)
         {
@@ -225,6 +236,33 @@ void cdc_acm_data_send_with_dtr(const uint8_t *buf, uint32_t size)
         }
     }
 }
+
+#ifdef ENABLE_FEAT_F4HWN_OVERLAY_APPS
+/* Overlay apps: start a send the caller waits for (ep_tx_busy_flag clears when
+ * the host has taken it).  Whatever a timed-out send left in the FIFO is
+ * cancelled first.  Unlike cdc_acm_data_send_with_dtr, a host that is slow to
+ * read never clears dtr_enable: the caller gives up with cdc_acm_cancel_send. */
+void cdc_acm_cancel_send(void)
+{
+    /* A few cycles: the endpoint index is shared with the ISR.  PRIMASK is
+     * restored, not cleared: a caller that masked interrupts keeps them so. */
+    const uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    usbd_ep_cancel_write(CDC_IN_EP);
+    ep_tx_busy_flag = false;
+    __set_PRIMASK(primask);
+}
+
+bool cdc_acm_start_send(const uint8_t *buf, uint32_t size)
+{
+    cdc_acm_cancel_send();
+    ep_tx_busy_flag = true;
+    if (usbd_ep_start_write(CDC_IN_EP, buf, size) == 0)
+        return true;
+    ep_tx_busy_flag = false;
+    return false;
+}
+#endif
 
 void cdc_acm_data_send_with_dtr_async(const uint8_t *buf, uint32_t size)
 {

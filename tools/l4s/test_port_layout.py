@@ -15,6 +15,38 @@ def define(path, name):
 
 
 class PortLayoutTest(unittest.TestCase):
+    def test_serial_and_l4s_capabilities_are_separate(self):
+        self.assertEqual(0x40, define('App/apps/app_overlay.h', 'APP_CAP_SERIAL'))
+        self.assertEqual(0x80, define('App/apps/app_overlay.h', 'APP_CAP_L4S'))
+        api=(ROOT/'App/apps/app_api.h').read_text(encoding='utf-8')
+        self.assertIn('offsetof(app_api_t, l4s_request_page) == 396u',api)
+        self.assertIn('sizeof(app_api_t) == 400u',api)
+        loader=(ROOT/'App/apps/app_overlay.c').read_text(encoding='utf-8')
+        self.assertIn('h->api_min == 3u && (h->required_caps & APP_CAP_SERIAL)',loader)
+        self.assertIn('memcmp(h->name, "Look4Sat", 9)',loader)
+        self.assertIn('memcmp(h->name, "CWPractice", 11)',loader)
+
+    def test_optional_services_cannot_admit_incompatible_api3_modules(self):
+        presets=json.loads((ROOT/'CMakePresets.json').read_text(encoding='utf-8'))
+        options=next(p['cacheVariables'] for p in presets['configurePresets'] if p['name']=='L4S')
+        self.assertFalse(options['ENABLE_OVERLAY_RX_AUDIO'])
+        self.assertFalse(options['ENABLE_OVERLAY_HANDOFF'])
+        self.assertFalse(options['ENABLE_FEAT_F4HWN_OVERLAY_INFO'])
+        loader=(ROOT/'App/apps/app_overlay.c').read_text(encoding='utf-8')
+        self.assertIn('if (h->api_min >= 3u && !(h->required_caps & APP_CAP_L4S)) return APP_ERR_CAP;',loader)
+        cmake=(ROOT/'CMakeLists.txt').read_text(encoding='utf-8')
+        self.assertIn('option(ENABLE_OVERLAY_RX_AUDIO "Resident overlay RX audio capture" ON)',cmake)
+        self.assertIn('option(ENABLE_OVERLAY_HANDOFF "Resident overlay application hand-off" ON)',cmake)
+
+    def test_cdc_upstream_services_keep_l4s_buffer_ownership(self):
+        usb=(ROOT/'App/usb/usbd_cdc_if.c').read_text(encoding='utf-8')
+        for symbol in ('cdc_acm_rx_total += nbytes','cdc_acm_config_count++',
+                       'usbd_ep_cancel_write(CDC_IN_EP)', '__set_PRIMASK(primask)',
+                       'L4S_ReplyComplete(&l4s_reply)', 'L4S_UsbLost()', 'L4S_SendReply('):
+            self.assertIn(symbol,usb)
+        driver=(ROOT/'Middlewares/CherryUSB/port/usb_dc_py32.c').read_text(encoding='utf-8')
+        self.assertIn('g_pyusb_udc.in_ep[ep_idx].actual_xfer_len = 0',driver)
+
     def test_l4s_preset_restores_nr7y_cw_menu_categories_and_layout(self):
         presets=json.loads((ROOT/'CMakePresets.json').read_text(encoding='utf-8'))
         options=next(p['cacheVariables'] for p in presets['configurePresets'] if p['name']=='L4S')
@@ -34,6 +66,9 @@ class PortLayoutTest(unittest.TestCase):
         self.assertEqual(4,define('App/app/l4s_macros.h','L4S_MACRO_SLOTS'))
     def test_deliverable_image_including_ram_stub_fits_the_multiboot_slot(self):
         binary = ROOT / "build/L4S/look4sat.f4hwn620.bin"
+        elf = binary.with_suffix('.elf')
+        self.assertTrue(elf.is_file(), 'successful current link is required')
+        self.assertGreaterEqual(binary.stat().st_mtime_ns, elf.stat().st_mtime_ns)
         self.assertTrue(binary.is_file())
         self.assertGreater(binary.stat().st_size, 0)
         self.assertLessEqual(binary.stat().st_size, 118 * 1024)
@@ -66,9 +101,9 @@ class PortLayoutTest(unittest.TestCase):
             data = (ROOT / "build/Apps" / (name + ".app")).read_bytes()
             header = struct.unpack("<4sHBBIIHH16s16sIIHH", data[:64])
             self.assertEqual(b"FAP1", header[0])
-            self.assertEqual((1, 3), header[2:4])
+            self.assertEqual((1, 4), header[2:4])
             self.assertEqual(0x20000280, header[10])
-            self.assertEqual(0x48, header[11])
+            self.assertEqual(0x80, header[11])
             self.assertTrue(0 < header[4] <= 4096)
             self.assertEqual(header[4], len(data) - 64)
             self.assertEqual(header[5], zlib.crc32(data[64:]) & 0xffffffff)

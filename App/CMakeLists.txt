@@ -3,6 +3,12 @@ add_library(App INTERFACE)
 target_include_directories(App INTERFACE .)
 target_link_libraries(App INTERFACE PY32F071_Driver)
 target_compile_definitions(App INTERFACE PRINTF_INCLUDE_CONFIG_H)
+if(ENABLE_OVERLAY_RX_AUDIO)
+    target_compile_definitions(App INTERFACE ENABLE_OVERLAY_RX_AUDIO)
+endif()
+if(ENABLE_OVERLAY_HANDOFF)
+    target_compile_definitions(App INTERFACE ENABLE_OVERLAY_HANDOFF)
+endif()
 
 target_sources(App INTERFACE
     # libgcc override (signed division)

@@ -25,7 +25,7 @@ RUN set -e; \
       *)             HOSTARCH="x86_64" ;; \
     esac; \
     TARBALL="arm-gnu-toolchain-${ARM_GCC_VERSION}-${HOSTARCH}-arm-none-eabi.tar.xz"; \
-    URL="https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/${ARM_GCC_VERSION}/binrel/${TARBALL}"; \
+    URL="https://armkeil.blob.core.windows.net/developer/files/downloads/gnu/${ARM_GCC_VERSION}/binrel/${TARBALL}"; \
     echo "Downloading ${URL}"; \
     curl -fL -O "${URL}"; \
     tar -xf "${TARBALL}"; \

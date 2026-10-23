@@ -12,7 +12,7 @@ RUN rm -f /etc/apt/sources.list.d/yarn.list && \
 # Install ARM GNU Toolchain (host autodetect)
 # Works with or without TARGETARCH/BuildKit
 # ---------------------------------------------
-ARG ARM_GCC_VERSION=13.3.rel1
+ARG ARM_GCC_VERSION=15.2.rel1
 ARG TARGETARCH  # may be unset under legacy builder
 
 RUN set -e; \

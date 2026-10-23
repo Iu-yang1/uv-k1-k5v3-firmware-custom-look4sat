@@ -14,5 +14,5 @@ python="${PYTHON:-python3}"
     -Wl,--no-warn-rwx-segment -o "$name.elf"
 "$objcopy" -O binary "$name.elf" "$name.bin"
 "$python" "$repo/App/apps/pack_app.py" "$name.bin" "$name.app" \
-    --name "$name" --ver 0.2-dev --api-min 4 --vma 0x20000280 \
+    --name "$name" --ver 1.0.0 --api-min 4 --vma 0x20000280 \
     --require l4s --exit-main

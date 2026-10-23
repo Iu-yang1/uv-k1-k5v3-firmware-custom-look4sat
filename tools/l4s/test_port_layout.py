@@ -65,7 +65,9 @@ class PortLayoutTest(unittest.TestCase):
             for name in names:self.assertGreaterEqual(define(path,name),boundary)
         self.assertEqual(4,define('App/app/l4s_macros.h','L4S_MACRO_SLOTS'))
     def test_deliverable_image_including_ram_stub_fits_the_multiboot_slot(self):
-        binary = ROOT / "build/L4S/look4sat.f4hwn620.bin"
+        presets=json.loads((ROOT/'CMakePresets.json').read_text(encoding='utf-8'))
+        target=next(p['cacheVariables']['TARGET'] for p in presets['configurePresets'] if p['name']=='L4S')
+        binary = ROOT / 'build/L4S' / (target + '.bin')
         elf = binary.with_suffix('.elf')
         self.assertTrue(elf.is_file(), 'successful current link is required')
         self.assertGreaterEqual(binary.stat().st_mtime_ns, elf.stat().st_mtime_ns)

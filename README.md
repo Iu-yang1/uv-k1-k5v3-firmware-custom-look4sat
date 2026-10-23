@@ -1,45 +1,73 @@
-# Look4Sat on F4HWN v6.2.0 — development port
+# Look4Sat L4S firmware 1.0.0 — F4HWN 6.3.0
 
-This fork migrates the complete NR7Y CW and L4S control engines from
-`Be-Galaxy/uv-k1-k5v3-firmware-custom-l4s` (`8bae734e`) to F4HWN v6.2.0.
-The target is UV-K1 / UV-K5 V3 with the PY32F071 MCU, not the original UV-K5.
-This is a **local integration build**, not a hardware-validated stable release.
+[Download firmware and modules](https://github.com/Iu-yang1/uv-k1-k5v3-firmware-custom-look4sat/releases/latest)
 
-- `L4S` builds a dedicated satellite/CW image with Multiboot, Multiconfig and
-  the 48-slot overlay loader. Normal Fusion, FieldOps, Transfer and Labs presets
-  remain separate; the satellite image does not include all their optional tools.
-- Retains USB CDC control, independent RX/TX Doppler targets, phone PTT, text CW,
-  F1–F8 synchronization, the 56-profile transactional store, native settings,
-  manual CW keying, Iambic A/B/Ultimatic/Bug, RIT/XIT and code practice.
-  Both frequencies remain fixed throughout transmission and resume afterward.
-- `Look4Sat.app` opens the native satellite page; `CWPractice.app` opens native
-  code practice. They delegate to the resident engines rather than loading a
-  second RF controller. They require this fork's append-only API level 3 and
-  capabilities, and are intentionally refused by unmodified Labs v6.2.0.
-  Existing API-1/2 apps retain the same ABI prefix and slot geometry; individual
-  apps still require their declared facilities (e.g. broadcast FM is not built
-  into the dedicated satellite preset).
+Dedicated satellite/CW firmware for **UV-K1 / UV-K5 V3 (PY32F071)**.
+Not compatible with the original UV-K5. Based on F4HWN 6.3.0 (`631eb5c`),
+with NR7Y CW and L4S engines from Be-Galaxy (`f242b481`).
 
-Exit other modal overlay apps before connecting CAT. Overlays cannot be launched
-during active satellite control, CW playback or profile commits, because their
-execution workspace is also the configuration-flash sector cache.
+- USB CDC / Android OTG CAT, independent RX/TX Doppler targets, phone PTT and
+  native CW text playback. Frequencies stay fixed during TX and resume afterward.
+- F1–F4: four 92-character handset presets, transactional synchronization and
+  handset confirmation. Old eight-slot banks retain their first four presets.
+- 56 satellite/transponder profiles with RX/TX bases, fixed corrections, modes,
+  power, tones, squelch and CW parameters; transactional save/import/delete.
+- Native CW menus, manual keying, Iambic A/B/Ultimatic/Bug, RIT/XIT and code practice.
+- Multiboot, Multiconfig and the 48-slot module loader remain available.
+- `Look4Sat.app` opens the resident satellite page; `CWPractice.app` opens
+  resident code practice. Neither creates a second RF controller.
 
-Build firmware with `./compile-firmware.sh L4S` and modules with
-`./compile-app.sh l4s cwpractice`. Native Windows helpers are
-`tools/l4s/build-host.ps1` and `tools/l4s/build-apps.ps1`.
+## Installation and module compatibility
 
-Before testing, back up calibration, channels and L4S profiles. Use the v6.2.0
-Multiboot/UV Studio procedure with a free user slot; retain an official v6.2.0
-image for recovery. Do not restore a full old raw flash dump onto the new layout.
-Import satellite profiles using the phone's JSON preview/merge and confirm on
-the handset; synchronize F1–F8 separately. Four locally recorded legacy macros
-now use the per-bank physical reserve at `0x00B000`, not the old UV-K5 logical
-`0x1C00` addresses. Legacy CHIRP drivers included below are reference material,
-not drivers validated for this v6.2.0 port.
+Back up calibration, channels, profiles and presets, and retain a working
+recovery slot. Use the F4HWN 6.3 Multiboot/UV Studio procedure to install the
+L4S image in a free user slot. Do not overwrite calibration or restore an old
+full raw flash dump. A Fusion 6.3 recovery image accompanies this release.
 
-No real-radio, RF spectral/timing, physical paddle, USB disconnect, power-loss
-or Multiboot hardware validation has been completed for this port. Software
-builds and host protocol simulations do not establish those results.
+**Replace both old Look4Sat/CWPractice modules with the API-4 modules from this
+release.** The old fork API-3 extension conflicts with upstream API 3; obsolete
+launchers are rejected instead of being run at an incorrect function offset.
+The modules require this fork, not unmodified Labs.
+
+The L4S preset defaults to `ENABLE_OVERLAY_RX_AUDIO=OFF`,
+`ENABLE_OVERLAY_HANDOFF=OFF`, and `ENABLE_FEAT_F4HWN_OVERLAY_INFO=OFF`.
+Generic API-3 modules are conservatively refused because old headers do not
+declare individual service requirements. Use the separate **Labs** firmware
+for the complete upstream API-3 audio, hand-off, serial and system-info services.
+API-1/2 modules remain subject to their declared capabilities; broadcast FM,
+for example, is not included in the dedicated L4S image.
+Exit other modal apps before connecting CAT.
+
+Build firmware: `./compile-firmware.sh L4S`; modules:
+`./compile-app.sh l4s cwpractice`. The primary Docker build uses ARM GNU 15.2.
+Windows helpers: `tools/l4s/build-host.ps1` and `tools/l4s/build-apps.ps1`.
+
+Automated host regressions, image-size and Multiboot RAM-stub isolation checks
+are part of validation. They do not certify real-radio RF timing/spectrum,
+physical paddles, power-loss recovery or Multiboot hardware behavior.
+
+## 中文
+
+**L4S 1.0.0 正式版，基于 F4HWN 6.3.0**，适用于 UV-K1／UV-K5 V3，
+不适用于原版 UV-K5。保留完整 NR7Y CW、USB CAT、独立 RX/TX 多普勒、
+手机 PTT、56 组卫星档案和多固件／多配置切换。F1–F4 每槽 92 字符，
+同步与永久档案操作仍须手台确认；可读取旧八槽宏的前四槽。
+
+更新前备份校准、信道、档案和预设，保留可用恢复槽。使用 F4HWN 6.3 的
+Multiboot／UV Studio 流程安装到空闲用户槽，不覆盖校准、不恢复旧整片镜像。
+本次附件提供 Fusion 6.3 恢复固件。
+**旧版 Look4Sat.app、CWPractice.app 必须重新安装为本版 API 4 模块**：
+两者分别打开原生卫星页、CW 练习页，不另建射频控制器，也不能装到原版 Labs。
+
+L4S 专用版默认关闭通用模块音频采样、模块间跳转和系统信息服务。
+由于旧模块头未声明细分服务需求，通用 API 3 模块会被明确拒绝加载；
+需要完整上游 API 3（包括模块串口服务）时，请切换到独立 Labs 固件。
+API 1／2 模块仍按所需能力检查，L4S 专用版不包含广播 FM 等可选工具。
+使用 CAT 前先退出其他模块页面。
+
+手机端建议使用 Look4Sat-FT4 13.6 或更新版本：提供全屏 CW 控制台、
+F1–F4 模板与日志共享呼号、CW 参数内同步，以及首次 USB 授权衔接修复。
+主机构建与模拟测试不等于射频、实体电键、断电恢复或多固件切换实机验证。
 
 ## Legacy NR7Y documentation and attribution
 

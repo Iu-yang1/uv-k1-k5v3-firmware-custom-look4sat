@@ -163,8 +163,8 @@
             "inherits": "Fusion",
             "cacheVariables": {
                 "EDITION_STRING": "Look4Sat",
-                "TARGET": "look4sat.f4hwn620",
-                "VERSION_STRING_2": "v6.3.0-l4s-dev4",
+                "TARGET": "look4sat.f4hwn630",
+                "VERSION_STRING_2": "v1.0.0-l4s",
                 "ENABLE_OVERLAY_RX_AUDIO": false,
                 "ENABLE_OVERLAY_HANDOFF": false,
                 "ENABLE_VOX": false,

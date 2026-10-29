@@ -21,11 +21,16 @@ class ReceiveAudioTest(unittest.TestCase):
         control = (ROOT/'App/app/l4s_control.c').read_text(encoding='utf-8')
         rit = (ROOT/'App/app/cwrit.c').read_text(encoding='utf-8')
         settings = (ROOT/'App/app/l4s_settings.c').read_text(encoding='utf-8')
+        cwapp = (ROOT/'App/app/cwapp.c').read_text(encoding='utf-8')
         harness = r'''
 #include <stdbool.h>
 #include <stdint.h>
 #include "l4s_protocol.h"
 #define ENABLE_CW_MODULATOR
+#define ENABLE_L4S_CONTROL
+#define CW_INACTIVE 0
+#define VFO_STATE_NORMAL 0
+#define FUNCTION_FOREGROUND 0
 #define MODULATION_FM 0
 #define MODULATION_AM 1
 #define MODULATION_USB 2
@@ -45,6 +50,8 @@ static int s_offset;
 static L4S_State state;
 static L4S_MenuState menu;
 static bool tx_busy;
+static int gCW_State;
+static bool gFlagEndTransmission;
 static bool can_retune(void) {return !tx_busy;}
 static unsigned regs[256],listen_calls,gSetting_set_audio_fm,gSetting_set_audio_am;
 static const unsigned afDacGainRegSpec=0x48,afcDisableRegSpec=0x73;
@@ -66,6 +73,14 @@ static bool LocalOffsetAllowed(void) {return false;}
         harness += '\n'+function(radio, 'void RADIO_SetModulation(')
         harness += '\n'+function(control, 'bool L4S_ReceiveMonitor(')
         harness += '\n'+function(control, 'static void setup_receive(void)\n')
+        harness += r'''
+static void APP_EndTransmission(void) {}
+static void FUNCTION_Select(unsigned f) {(void)f;}
+static void RADIO_SetVfoState(unsigned v) {(void)v;}
+static void RADIO_SelectVfos(void) {gMonitor=vfo.Modulation==MODULATION_CW || vfo.Modulation==MODULATION_USB;}
+static bool L4S_Active(void) {return true;}
+'''
+        harness += '\n'+function(cwapp, 'void CW_EndTxNow(')
         harness += '\n'+function(control, 'static bool apply_rx_mode(')
         harness += '\n'+function(settings, 'static uint8_t change(')
         harness += '\n'+function(settings, 'bool L4S_MenuKey(')
@@ -151,6 +166,14 @@ unsigned editing(void) {return menu.editing;}
                     self.assertEqual(expected, bool(lib.monitoring()))
                     self.assertEqual(int(expected), lib.listening())
                     self.assertEqual(sql, lib.sql())
+
+    def test_cw_completion_restores_linear_monitor_but_retains_fm_squelch(self):
+        for lib in self.libs:
+            for mode in range(4):
+                lib.select_rx(mode, 9)
+                lib.CW_EndTxNow()
+                self.assertEqual(mode in (2,3), bool(lib.monitoring()))
+                self.assertEqual(9, lib.sql())
 
     def test_all_fm_am_effect_presets_remain_selectable(self):
         lib = self.libs[1]

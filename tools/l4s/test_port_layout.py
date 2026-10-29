@@ -15,6 +15,14 @@ def define(path, name):
 
 
 class PortLayoutTest(unittest.TestCase):
+    def test_audio_is_restored_without_removing_native_satellite_or_cw_features(self):
+        presets=json.loads((ROOT/'CMakePresets.json').read_text(encoding='utf-8'))
+        options=next(p['cacheVariables'] for p in presets['configurePresets'] if p['name']=='L4S')
+        self.assertTrue(options['ENABLE_FEAT_F4HWN_AUDIO'])
+        self.assertFalse(options['ENABLE_FEAT_F4HWN_K5VIEWER'])
+        self.assertFalse(options['ENABLE_TX1750'])
+        for feature in ('ENABLE_L4S_CONTROL','ENABLE_FEAT_NR7Y_CW','ENABLE_FEAT_NR7Y_CPO','ENABLE_FEAT_F4HWN_OVERLAY_APPS'):
+            self.assertTrue(options[feature])
     def test_serial_and_l4s_capabilities_are_separate(self):
         self.assertEqual(0x40, define('App/apps/app_overlay.h', 'APP_CAP_SERIAL'))
         self.assertEqual(0x80, define('App/apps/app_overlay.h', 'APP_CAP_L4S'))
@@ -73,7 +81,7 @@ class PortLayoutTest(unittest.TestCase):
         self.assertGreaterEqual(binary.stat().st_mtime_ns, elf.stat().st_mtime_ns)
         self.assertTrue(binary.is_file())
         self.assertGreater(binary.stat().st_size, 0)
-        self.assertLessEqual(binary.stat().st_size, 118 * 1024)
+        self.assertLessEqual(binary.stat().st_size, 118 * 1024 - 512)
 
     def test_local_cw_macros_do_not_write_old_channel_or_calibration_addresses(self):
         start = define("App/app/cwmacro.h", "CW_MACRO1_EEPROM_ADDR")

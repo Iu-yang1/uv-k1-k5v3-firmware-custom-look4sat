@@ -107,9 +107,10 @@ class DisplayTest(unittest.TestCase):
         third=self.render()
         self.assertIn('RX B ',third[1]);self.assertIn('TX B ',third[2]);self.assertIn('RX CORR',third[3])
         self.assertIn('TX CORR',third[4]);self.assertIn('CW HANG',third[5])
-        for _ in range(7):self.lib.Host_MenuKey(12)
+        for _ in range(8):self.lib.Host_MenuKey(12)
         final=self.render()
-        self.assertIn('CW HANG',final[2]);self.assertIn('CW KEYER',final[3]);self.assertIn('CW SPACING',final[4])
+        self.assertIn('CW HANG',final[1]);self.assertIn('CW KEYER',final[2]);self.assertIn('CW SPACING',final[3])
+        self.assertIn('RX CW/USB',final[4])
         self.assertIn('APPLY + SAVE',final[5])
 
 if __name__=='__main__': unittest.main()

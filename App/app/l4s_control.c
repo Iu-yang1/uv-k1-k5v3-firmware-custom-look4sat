@@ -225,6 +225,17 @@ static bool set_mode(uint8_t rx, uint8_t tx, uint8_t narrow)
     gUpdateDisplay=true; return true;
 }
 
+static bool apply_rx_mode(uint8_t mode)
+{
+    if((mode!=1 && mode!=2) || state.tx_mode!=L4S_CW_MODE ||
+        (state.rx_mode!=L4S_CW_MODE && state.rx_mode!=L4S_USB) ||
+        state.tx_window_open || !can_retune()) return false;
+    gRxVfo->Modulation=mode==1 ? MODULATION_CW : MODULATION_USB;
+    state.rx_mode=mode==1 ? L4S_CW_MODE : L4S_USB;
+    state.settings.mode=mode;state.user_modified=true;state.profile_generation++;
+    setup_receive();return true;
+}
+
 static void apply_tone(FREQ_Config_t *target,uint8_t choice)
 {
     target->CodeType=choice ? CODE_TYPE_CONTINUOUS_TONE : CODE_TYPE_OFF;
@@ -446,9 +457,13 @@ bool L4S_LocalKey(KEY_Code_t key, bool pressed, bool held)
         if (held && key!=KEY_UP && key!=KEY_DOWN) return true;
         if (menu.open) {
             if (pressed) {
-                const bool busy=state.tx_window_open || !can_retune() || GPIO_IsPttPressed();
+                const bool busy=state.tx_window_open || !can_retune() || GPIO_IsPttPressed() ||
+                    (menu.index==L4S_MENU_RX_MODE && state.tx_mode!=L4S_CW_MODE);
                 if (L4S_MenuKey(&menu,key,busy)) {
-                    if ((menu.arm_next && ((menu.draft.mode!=0 && menu.draft.mode!=3) || !menu.draft.arm_tone))) menu.error=3;
+                    if(menu.index==L4S_MENU_RX_MODE) {
+                        if(!apply_rx_mode(menu.draft.mode)) menu.error=4;
+                    }
+                    else if ((menu.arm_next && ((menu.draft.mode!=0 && menu.draft.mode!=3) || !menu.draft.arm_tone))) menu.error=3;
                     else {
                         uint8_t result=state.profile_selected ? L4S_StoreUpsert(&store,state.context_key,state.satellite_name,
                             &menu.draft,store.transaction+1 ? store.transaction+1 : 1) : L4S_NOT_READY;

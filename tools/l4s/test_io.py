@@ -107,7 +107,7 @@ class IoTest(unittest.TestCase):
             self.lib.Host_MenuDraft(ctypes.byref(config))
             self.assertEqual(expected,config.squelch)
         self.lib.Host_MenuKey(10)
-        for _ in range(8):self.lib.Host_MenuKey(12)
+        for _ in range(9):self.lib.Host_MenuKey(12)
         self.assertTrue(self.lib.Host_MenuKey(10))  # Save remains reachable.
 
     def test_v1_profile_migrates_to_open_squelch_and_v2_keeps_level(self):

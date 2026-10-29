@@ -151,6 +151,10 @@ bool L4S_MenuKey(L4S_MenuState *m,KEY_Code_t key,bool busy)
     if (key==KEY_MENU) {
         if (busy) {m->error=4;return false;}
         if (m->index==L4S_MENU_SAVE) return true;
+        if(m->index==L4S_MENU_RX_MODE) {
+            if(m->draft.mode!=1 && m->draft.mode!=2){m->error=6;return false;}
+            m->editing=!m->editing;return !m->editing;
+        }
         if((m->index==10 && !m->draft.rx_base_hz) || (m->index==11 && !m->draft.tx_base_hz)) {
             m->error=m->index==11 && m->draft.rx_base_hz ? 15 : 14;return false;
         }
@@ -163,6 +167,7 @@ bool L4S_MenuKey(L4S_MenuState *m,KEY_Code_t key,bool busy)
     if(m->index>=14&&m->index<=16&&!m->draft.cw_hang){m->draft.cw_hang=30;m->draft.cw_keyer=1;}
     switch(m->index) {
         case 0:m->draft.mode=change(m->draft.mode,direction,0,3,1);break;
+        case L4S_MENU_RX_MODE:m->draft.mode=m->draft.mode==1 ? 2 : 1;break;
         case 1:m->draft.power=change(m->draft.power,direction,0,7,1);break;
         case 2:m->draft.tx_tone=change(m->draft.tx_tone,direction,0,50,1);break;
         case 3:m->draft.rx_tone=change(m->draft.rx_tone,direction,0,50,1);break;
@@ -203,6 +208,7 @@ void L4S_MenuValue(const L4S_MenuState *m,unsigned item,char *text,unsigned size
     char tone[8];
     switch(item) {
         case 0:snprintf_(text,size,"MODE %s",modes[m->draft.mode]);break;
+        case L4S_MENU_RX_MODE:snprintf_(text,size,"RX CW/USB %s",m->draft.mode==1 ? "CW" : m->draft.mode==2 ? "USB" : "N/A");break;
         case 1:snprintf_(text,size,"POWER %s",power[m->draft.power]);break;
         case 2:case 3:case 4:
             L4S_FormatTone(L4S_CtcssValue(item==2 ? m->draft.tx_tone : item==3 ? m->draft.rx_tone : m->draft.arm_tone),tone,sizeof(tone));

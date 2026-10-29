@@ -3,6 +3,7 @@ import ctypes
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import tempfile
 import unittest
 
@@ -19,9 +20,11 @@ class ReceiveAudioTest(unittest.TestCase):
         radio = (ROOT/'App/radio.c').read_text(encoding='utf-8')
         control = (ROOT/'App/app/l4s_control.c').read_text(encoding='utf-8')
         rit = (ROOT/'App/app/cwrit.c').read_text(encoding='utf-8')
+        settings = (ROOT/'App/app/l4s_settings.c').read_text(encoding='utf-8')
         harness = r'''
 #include <stdbool.h>
 #include <stdint.h>
+#include "l4s_protocol.h"
 #define ENABLE_CW_MODULATOR
 #define MODULATION_FM 0
 #define MODULATION_AM 1
@@ -39,6 +42,10 @@ static VFO_Info_t vfo, *gRxVfo=&vfo, *gTxVfo=&vfo;
 static struct { unsigned SQUELCH_LEVEL,CW_TONE_FREQUENCY; } gEeprom;
 static bool gMonitor,gCW_CrossMode,s_rit_on,s_xit_on;
 static int s_offset;
+static L4S_State state;
+static L4S_MenuState menu;
+static bool tx_busy;
+static bool can_retune(void) {return !tx_busy;}
 static unsigned regs[256],listen_calls,gSetting_set_audio_fm,gSetting_set_audio_am;
 static const unsigned afDacGainRegSpec=0x48,afcDisableRegSpec=0x73;
 static void BK4819_WriteRegister(unsigned r,unsigned v) {regs[r]=v;}
@@ -59,6 +66,9 @@ static bool LocalOffsetAllowed(void) {return false;}
         harness += '\n'+function(radio, 'void RADIO_SetModulation(')
         harness += '\n'+function(control, 'bool L4S_ReceiveMonitor(')
         harness += '\n'+function(control, 'static void setup_receive(void)\n')
+        harness += '\n'+function(control, 'static bool apply_rx_mode(')
+        harness += '\n'+function(settings, 'static uint8_t change(')
+        harness += '\n'+function(settings, 'bool L4S_MenuKey(')
         harness += '\n'+function(rit, 'uint32_t CW_RIT_RxFrequency(')
         harness += r'''
 void select_rx(unsigned mode,unsigned sql) {
@@ -74,16 +84,39 @@ uint32_t tuned(unsigned mode,uint32_t frequency) {
     vfo.Modulation=mode;gEeprom.CW_TONE_FREQUENCY=60;gCW_CrossMode=false;
     return CW_RIT_RxFrequency(&vfo,frequency);
 }
+void menu_reset(unsigned mode) {
+    state=(L4S_State){0};menu=(L4S_MenuState){0};tx_busy=false;
+    state.settings.mode=state.saved_settings.mode=mode;state.settings.power=3;
+    state.rx_mode=mode==1 ? L4S_CW_MODE : mode==2 ? L4S_USB : L4S_FM;
+    state.tx_mode=mode==1 || mode==2 ? L4S_CW_MODE : L4S_FM;
+    state.applied=(L4S_Pair){435100000,145900000,4,true};state.mode_ready=true;
+    menu.draft=state.settings;menu.draft.power=7;menu.open=true;menu.index=L4S_MENU_RX_MODE;
+}
+unsigned menu_key(unsigned key) {
+    if(!L4S_MenuKey(&menu,key,tx_busy)) return 0;
+    return menu.index==L4S_MENU_RX_MODE && apply_rx_mode(menu.draft.mode);
+}
+void busy(unsigned value) {tx_busy=value;state.tx_window_open=value;}
+unsigned current_mode(void) {return state.settings.mode;}
+unsigned saved_mode(void) {return state.saved_settings.mode;}
+unsigned draft_mode(void) {return menu.draft.mode;}
+unsigned current_power(void) {return state.settings.power;}
+unsigned generation(void) {return state.profile_generation;}
+unsigned modified(void) {return state.user_modified;}
+unsigned pair_unchanged(void) {return state.applied.rx_hz==435100000 && state.applied.tx_hz==145900000 && state.applied.revision==4;}
+unsigned menu_open(void) {return menu.open;}
+unsigned editing(void) {return menu.editing;}
 '''
         source = Path(cls.folder.name)/'receive.c'
         source.write_text(harness, encoding='utf-8')
-        compiler = os.environ.get('L4S_HOST_CC', 'H:/tools/msys64/ucrt64/bin/gcc.exe')
+        compiler = os.environ.get('L4S_HOST_CC') or shutil.which('gcc') or 'H:/tools/msys64/ucrt64/bin/gcc.exe'
+        environment = dict(os.environ, PATH=str(Path(compiler).parent)+os.pathsep+os.environ.get('PATH',''))
         for enabled in (False, True):
-            binary = Path(cls.folder.name)/f'receive-{enabled}.dll'
-            command = [compiler, '-shared', '-O2', '-std=c11', str(source), '-o', str(binary)]
+            binary = Path(cls.folder.name)/('receive-'+str(enabled)+('.dll' if os.name=='nt' else '.so'))
+            command = [compiler, '-shared', '-O2', '-std=c11', '-I',str(ROOT/'App/app'),'-I',str(ROOT/'App'),str(source), '-o', str(binary)]
             if enabled:
                 command.append('-DENABLE_FEAT_F4HWN_AUDIO')
-            subprocess.run(command, check=True)
+            subprocess.run(command, check=True, env=environment)
             lib = ctypes.CDLL(str(binary))
             lib.tuned.argtypes = [ctypes.c_uint, ctypes.c_uint32]
             lib.tuned.restype = ctypes.c_uint32
@@ -134,6 +167,29 @@ uint32_t tuned(unsigned mode,uint32_t frequency) {
             self.assertEqual(base-60, lib.tuned(3, base))
             self.assertEqual(base, lib.tuned(2, base))
             self.assertEqual(base-60, lib.tuned(3, base))
+
+    def test_menu_confirmation_only_changes_live_rx_and_not_other_drafts_or_flash(self):
+        for lib in self.libs:
+            lib.menu_reset(1)
+            self.assertFalse(lib.menu_key(10))  # MENU: edit
+            lib.menu_key(11)  # UP: choose USB
+            self.assertEqual(2,lib.draft_mode());self.assertEqual(1,lib.current_mode())
+            self.assertTrue(lib.menu_key(10))  # MENU: apply only RX
+            self.assertEqual(2,lib.current_mode());self.assertEqual(1,lib.saved_mode())
+            self.assertEqual(3,lib.current_power());self.assertEqual(1,lib.generation())
+            self.assertTrue(lib.modified());self.assertTrue(lib.pair_unchanged())
+            lib.menu_key(13)  # EXIT closes menu, keeps the confirmed selection
+            self.assertFalse(lib.menu_open());self.assertEqual(2,lib.current_mode())
+
+    def test_menu_cancel_fm_and_transmit_cannot_change_receive_mode(self):
+        for lib in self.libs:
+            lib.menu_reset(1);lib.menu_key(10);lib.menu_key(11);lib.menu_key(13)
+            self.assertEqual(1,lib.current_mode());self.assertEqual(0,lib.generation())
+            lib.menu_reset(0);lib.menu_key(10)
+            self.assertFalse(lib.editing());self.assertEqual(0,lib.current_mode())
+            lib.menu_reset(1);lib.menu_key(10);lib.menu_key(11);lib.busy(1)
+            self.assertFalse(lib.menu_key(10));self.assertEqual(1,lib.current_mode())
+            self.assertEqual(0,lib.generation())
 
 
 if __name__ == '__main__':

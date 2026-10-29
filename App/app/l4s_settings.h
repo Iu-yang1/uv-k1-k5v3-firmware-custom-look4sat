@@ -5,8 +5,9 @@
 #include <stdbool.h>
 #include "driver/keyboard.h"
 #define L4S_PROFILE_SIZE 32u
-#define L4S_MENU_ITEMS 18u
-#define L4S_MENU_SAVE 17u
+#define L4S_MENU_ITEMS 19u
+#define L4S_MENU_RX_MODE 17u
+#define L4S_MENU_SAVE 18u
 #define L4S_SAT_PROFILE_ADDR 0x00A200u
 #define L4S_SAT_PROFILE_SIZE 64u
 #define L4S_SAT_PROFILE_COUNT 56u
@@ -45,7 +46,7 @@ uint8_t L4S_SaveSatelliteProfile(const uint8_t key[16], const char *name, const 
 uint8_t L4S_CtcssChoice(uint16_t tenths);
 uint16_t L4S_CtcssValue(uint8_t choice);
 void L4S_FormatTone(uint16_t tenths, char *text, unsigned size);
-/* MENU enters edit; arrows navigate/edit; final item applies; EXIT cancels without ending session. */
+/* True on SAVE or confirmation of RX MODE; the controller owns applying each operation. */
 bool L4S_MenuKey(L4S_MenuState *menu, KEY_Code_t key, bool busy);
 void L4S_MenuValue(const L4S_MenuState *menu, unsigned item, char *text, unsigned size);
 uint8_t L4S_ShortcutMenuIndex(KEY_Code_t key);

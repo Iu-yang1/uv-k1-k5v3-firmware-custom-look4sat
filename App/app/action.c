@@ -479,6 +479,9 @@ inline static bool ACTION_IsBlockedInFM(uint8_t action)
 
 static void ACTION_Execute(uint8_t action)
 {
+#ifndef ENABLE_TX1750
+    if(action==ACTION_OPT_1750) return;
+#endif
     if (!ACTION_IsAvailable(action)) {
         gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
         return;

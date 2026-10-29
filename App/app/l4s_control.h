@@ -10,6 +10,7 @@
 #include "l4s_macros.h"
 void L4S_ControlTick(void);
 bool L4S_Active(void);
+bool L4S_ReceiveMonitor(void);
 bool L4S_RequestPage(uint8_t page);
 bool L4S_BlockPhysicalPtt(void);
 bool L4S_LocalKey(KEY_Code_t key, bool pressed, bool held);

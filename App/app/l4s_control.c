@@ -181,10 +181,14 @@ static bool can_retune(void)
         (!GPIO_IsPttPressed() || local_ptt_request);
 }
 
+bool L4S_ReceiveMonitor(void)
+{
+    return gRxVfo->Modulation==MODULATION_CW || gRxVfo->Modulation==MODULATION_USB || gEeprom.SQUELCH_LEVEL==0;
+}
+
 static void setup_receive(void)
 {
-    /* RADIO_SelectVfos defaults CW/USB to monitor; the explicit session SQL takes precedence. */
-    gMonitor=gEeprom.SQUELCH_LEVEL==0;
+    gMonitor=L4S_ReceiveMonitor();
     RADIO_SetupRegisters(true);
     if(gMonitor) APP_StartListening(FUNCTION_MONITOR);
 }

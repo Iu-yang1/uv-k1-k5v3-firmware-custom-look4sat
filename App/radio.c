@@ -148,6 +148,7 @@ const char gModulationStr[MODULATION_UKNOWN][4] = {
         BK4819_WriteRegister(0x54, 0x9009);
         BK4819_WriteRegister(0x55, 0x31A9);
     }
+#endif
 
 #ifdef ENABLE_CW_MODULATOR
     static void AUDIO_ApplyCWProfile(void)
@@ -158,7 +159,6 @@ const char gModulationStr[MODULATION_UKNOWN][4] = {
         BK4819_WriteRegister(0x54, 0x9009);
         BK4819_WriteRegister(0x55, 0x31A9);
     }
-#endif
 #endif
 
 bool RADIO_IsChannelInScanList(uint8_t channelScanList, uint8_t scanList)
@@ -1311,19 +1311,21 @@ void RADIO_SetModulation(ModulationMode_t modulation)
             BK4819_WriteRegister(0x2b, 0x0000);
             BK4819_WriteRegister(0x2f, 0x9890);
 
-            #ifdef ENABLE_FEAT_F4HWN_AUDIO
-                #ifdef ENABLE_CW_MODULATOR
+            #ifdef ENABLE_CW_MODULATOR
                 if (modulation == MODULATION_CW)
                     AUDIO_ApplyCWProfile();
                 else
-                #endif
+            #endif
+            #ifdef ENABLE_FEAT_F4HWN_AUDIO
                 if (modulation == MODULATION_USB)
                     AUDIO_ApplyUSBProfile();
                 else
                     AUDIO_ApplyFMProfile(gSetting_set_audio_fm);
             #else
+            {
                 BK4819_WriteRegister(0x54, 0x9009);
                 BK4819_WriteRegister(0x55, 0x31a9);
+            }
             #endif
             break;
         }

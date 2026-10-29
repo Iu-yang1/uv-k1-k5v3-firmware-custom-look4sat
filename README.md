@@ -1,9 +1,9 @@
-# Look4Sat L4S firmware 1.0.0 — F4HWN 6.3.0
+# Look4Sat L4S firmware 1.0.1 — F4HWN 6.3.0
 
 [Download firmware and modules](https://github.com/Iu-yang1/uv-k1-k5v3-firmware-custom-look4sat/releases/latest)
 
 Dedicated satellite/CW firmware for **UV-K1 / UV-K5 V3 (PY32F071)**.
-Not compatible with the original UV-K5. Based on F4HWN 6.3.0 (`631eb5c`),
+Not compatible with the original UV-K5. Based on F4HWN 6.3.0 (`3574e94`),
 with NR7Y CW and L4S engines from Be-Galaxy (`f242b481`).
 
 - USB CDC / Android OTG CAT, independent RX/TX Doppler targets, phone PTT and
@@ -13,6 +13,11 @@ with NR7Y CW and L4S engines from Be-Galaxy (`f242b481`).
 - 56 satellite/transponder profiles with RX/TX bases, fixed corrections, modes,
   power, tones, squelch and CW parameters; transactional save/import/delete.
 - Native CW menus, manual keying, Iambic A/B/Ultimatic/Bug, RIT/XIT and code practice.
+- Full FM/AM audio presets and CW/USB receive configuration. CW/USB always monitor
+  without changing saved squelch; FM/NFM retain squelch. In the Doppler MENU,
+  `RX CW/USB` applies on confirmation; permanent saving still needs handset confirmation.
+- K5Viewer screen mirroring and the 1750 Hz call tone are disabled in the L4S
+  edition to leave room for audio and satellite controls; USB CAT remains available.
 - Multiboot, Multiconfig and the 48-slot module loader remain available.
 - `Look4Sat.app` opens the resident satellite page; `CWPractice.app` opens
   resident code practice. Neither creates a second RF controller.
@@ -24,8 +29,9 @@ recovery slot. Use the F4HWN 6.3 Multiboot/UV Studio procedure to install the
 L4S image in a free user slot. Do not overwrite calibration or restore an old
 full raw flash dump. A Fusion 6.3 recovery image accompanies this release.
 
-**Replace both old Look4Sat/CWPractice modules with the API-4 modules from this
-release.** The old fork API-3 extension conflicts with upstream API 3; obsolete
+**The API-4 Look4Sat/CWPractice modules from [L4S 1.0.0](https://github.com/Iu-yang1/uv-k1-k5v3-firmware-custom-look4sat/releases/tag/l4s-v1.0.0)
+remain compatible; this release does not attach new modules.** Replace older
+launchers with those API-4 versions. The old fork API-3 extension conflicts with upstream API 3; obsolete
 launchers are rejected instead of being run at an incorrect function offset.
 The modules require this fork, not unmodified Labs.
 
@@ -49,15 +55,22 @@ physical paddles, power-loss recovery or Multiboot hardware behavior.
 
 ## 中文
 
-**L4S 1.0.0 正式版，基于 F4HWN 6.3.0**，适用于 UV-K1／UV-K5 V3，
+**L4S 1.0.1 正式版，基于 F4HWN 6.3.0**，适用于 UV-K1／UV-K5 V3，
 不适用于原版 UV-K5。保留完整 NR7Y CW、USB CAT、独立 RX/TX 多普勒、
 手机 PTT、56 组卫星档案和多固件／多配置切换。F1–F4 每槽 92 字符，
 同步与永久档案操作仍须手台确认；可读取旧八槽宏的前四槽。
 
+恢复 FM／AM 音效预设及 CW／USB 接收配置。CW／USB 始终开放监听，
+不改写保存的静噪值；FM／NFM 保留静噪。多普勒 MENU 新增 `RX CW/USB`，
+确认后立即应用，永久保存仍需手台确认。L4S 专用版关闭 K5Viewer 屏幕镜像
+和 1750 Hz 呼叫音，为音效与卫星控制保留空间；USB CAT 不受影响。
+
 更新前备份校准、信道、档案和预设，保留可用恢复槽。使用 F4HWN 6.3 的
 Multiboot／UV Studio 流程安装到空闲用户槽，不覆盖校准、不恢复旧整片镜像。
 本次附件提供 Fusion 6.3 恢复固件。
-**旧版 Look4Sat.app、CWPractice.app 必须重新安装为本版 API 4 模块**：
+**[L4S 1.0.0](https://github.com/Iu-yang1/uv-k1-k5v3-firmware-custom-look4sat/releases/tag/l4s-v1.0.0)
+的 API 4 Look4Sat.app、CWPractice.app 仍兼容，本版不附带新模块**。
+更旧的启动模块需要更换为上述 API 4 版本：
 两者分别打开原生卫星页、CW 练习页，不另建射频控制器，也不能装到原版 Labs。
 
 L4S 专用版默认关闭通用模块音频采样、模块间跳转和系统信息服务。
@@ -66,8 +79,9 @@ L4S 专用版默认关闭通用模块音频采样、模块间跳转和系统信�
 API 1／2 模块仍按所需能力检查，L4S 专用版不包含广播 FM 等可选工具。
 使用 CAT 前先退出其他模块页面。
 
-手机端建议使用 Look4Sat-FT4 13.6 或更新版本：提供全屏 CW 控制台、
-F1–F4 模板与日志共享呼号、CW 参数内同步，以及首次 USB 授权衔接修复。
+手机端建议使用 Look4Sat-FT4 13.13 或更新版本，以保留手台临时选择的
+CW／USB 接收模式；同时提供全屏 CW 控制台、F1–F4 模板与日志共享呼号、
+CW 参数内同步，以及首次 USB 授权衔接修复。
 主机构建与模拟测试不等于射频、实体电键、断电恢复或多固件切换实机验证。
 
 ## Legacy NR7Y documentation and attribution

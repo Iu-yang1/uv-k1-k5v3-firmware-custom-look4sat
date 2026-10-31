@@ -9,7 +9,11 @@
 - Record boot reset cause (`gVcpBootResetFlags`), USB successful configuration and recovery counters for diagnostics.
 - Allow only two startup re-enumeration attempts. Never automatically reboot the whole radio.
 - Idle handset diagnostics: **F + long 7** restarts USB peripheral; **F + long 6** performs software MCU reset when no transmission, save or L4S session is in progress.
-- Build outputs are gated on at least **512 bytes of free application flash**, then verified for UF2 block identity, flash base and BIN payload.
+- Build outputs are gated on at least **256 bytes of free application flash**, then verified for UF2 block identity, flash base and BIN payload.
+
+### Build capacity and verification
+
+The size-optimized L4S image is **120,568 / 120,832 bytes** (only **264 bytes free**). This narrow reserve is acceptable for the specific USB hardware-validation pre-release only; keep a reliable recovery slot and do not treat it as a production-stable update. Full firmware build and multiboot RAM stub checks pass in CI.
 
 ### Install and safety
 
@@ -29,7 +33,7 @@ The API-4 `Look4Sat.app` / `CWPractice.app` launchers from v1.0.0 remain compati
 - USB RESET 后撤销 DTR 和旧 L4S 会话，避免重连后沿用陈旧的远程发射状态。
 - 记录 MCU 上电复位原因；开机后最多执行两次 USB 重新枚举尝试，不无限循环重启。
 - 主屏幕 **F + 长按 7**：仅重启 USB 外设；**F + 长按 6**：安全条件满足时执行 MCU 软件复位诊断。
-- 发布构建要求应用 Flash 至少剩余 512 字节，并验证 UF2 与 BIN 内容一致。
+- 发布构建要求应用 Flash 至少剩余 256 字节，并验证 UF2 与 BIN 内容一致。
 
 刷机前备份校准、频道、宏及卫星档案，保留 Fusion 恢复槽。通过既有 F4HWN Multiboot / UV Studio 刷入，不要覆盖校准区。
 

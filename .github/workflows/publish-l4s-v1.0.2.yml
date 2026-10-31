@@ -1,0 +1,59 @@
+name: Publish L4S v1.0.2 USB recovery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-l4s-v1.0.2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: l4s-v1.0.2-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'Iu-yang1/uv-k1-k5v3-firmware-custom-look4sat'
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: l4s-v1.0.2
+    steps:
+      - name: Checkout tagged release source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build USB recovery and independent Fusion recovery image
+        run: |
+          chmod +x compile-firmware.sh
+          ./compile-firmware.sh L4S
+          ./compile-firmware.sh Fusion
+      - name: Validate image headroom and UF2; package ZIP and SHA256
+        run: |
+          python3 tools/l4s/package_usb_release.py --tag "$TAG" --sha "$GITHUB_SHA" --out dist
+          cd dist
+          sha256sum --check SHA256SUMS.txt
+      - name: Archive pre-release binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: l4s-v1.0.2-usb-recovery
+          path: dist/
+          if-no-files-found: error
+      - name: Create GitHub pre-release with verified artifacts
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$TAG" --title "Look4Sat L4S v1.0.2 — USB recovery iteration" --notes-file docs/l4s-v1.0.2-release.md --prerelease --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" dist/* --target "$GITHUB_SHA" \
+              --title "Look4Sat L4S v1.0.2 — USB recovery iteration" \
+              --notes-file docs/l4s-v1.0.2-release.md --prerelease \
+              --repo "$GITHUB_REPOSITORY"
+          fi
+      - name: Confirm final release assets
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,isPrerelease,assets,url

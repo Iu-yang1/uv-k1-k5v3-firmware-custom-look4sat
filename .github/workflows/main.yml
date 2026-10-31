@@ -2,6 +2,8 @@ name: Build Firmware and Modules
 
 on:
   push:
+    branches: [ main, 'fix/uvk1-usb-reenumeration-*' ]
+  pull_request:
     branches: [ main ]
   workflow_dispatch:
 

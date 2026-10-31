@@ -56,6 +56,7 @@
 #if defined(ENABLE_USB) && defined(ENABLE_L4S_CONTROL)
 #include "driver/vcp.h"
 #include "driver/gpio.h"
+#include "app/l4s_control.h"
 #endif
 #include "settings.h"
 #include "ui/inputbox.h"

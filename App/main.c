@@ -407,6 +407,10 @@ void Main(void)
 
             if (gNextTimeslice_500ms) {
                 APP_TimeSlice500ms();
+#if defined(ENABLE_USB) && defined(ENABLE_L4S_CONTROL)
+                /* Safe, bounded USB re-enumeration retries while idle. */
+                VCP_RecoveryTick500ms(gCurrentFunction == FUNCTION_TRANSMIT || GPIO_IsPttPressed());
+#endif
             }
         }
     }

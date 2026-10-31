@@ -27,7 +27,14 @@
 extern uint8_t VCP_RxBuf[VCP_RX_BUF_SIZE];
 extern volatile uint32_t VCP_RxBufPointer;
 
-void VCP_Init();
+void VCP_Init(void);
+/* Diagnostic and recovery: counters can be inspected through SWD/debugger. */
+extern volatile uint32_t gVcpBootResetFlags;
+extern volatile uint32_t gVcpRecoveryCount;
+extern volatile uint32_t gVcpConfiguredCount;
+/* Safe only from the main loop, when RF is not transmitting. */
+bool VCP_RestartUsb(void);
+void VCP_RecoveryTick500ms(bool radioTransmitting);
 
 #ifdef ENABLE_FEAT_F4HWN_K5VIEWER
 bool VCP_K5ViewerPing(void);

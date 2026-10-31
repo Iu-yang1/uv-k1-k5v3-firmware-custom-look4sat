@@ -215,7 +215,11 @@ void usbd_cdc_acm_set_dtr(uint8_t intf, bool dtr)
         dtr_enable = 1;
     } else {
         dtr_enable = 0;
+        ep_tx_busy_flag = false;
 #ifdef ENABLE_L4S_CONTROL
+        /* A USB bus reset drops the endpoint transfer: do not carry a
+         * previously busy reply into the next HELLO/OPEN session. */
+        L4S_ReplyComplete(&l4s_reply);
         L4S_UsbLost();
 #endif
     }

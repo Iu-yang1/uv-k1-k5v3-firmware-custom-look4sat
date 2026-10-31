@@ -998,6 +998,10 @@ int usbd_initialize(void)
 
 int usbd_deinitialize(void)
 {
+    /* Deconfigure before resetting the controller, so a new VCP session
+     * never inherits a stale configured flag from the previous bus. */
+    usbd_core_cfg.configured = false;
+    usbd_core_cfg.configuration = 0;
     usbd_core_cfg.intf_offset = 0;
     usb_slist_init(&usbd_intf_head);
     usb_dc_deinit();

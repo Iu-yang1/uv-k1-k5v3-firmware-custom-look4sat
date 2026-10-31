@@ -84,6 +84,10 @@ static void cdc_notify_handler(uint8_t event, void *arg)
 {
     switch (event) {
         case USBD_EVENT_RESET:
+            /* The host has reset enumeration: a previous CDC DTR/session
+             * cannot remain valid. This callback is idempotent for both
+             * interfaces in a CDC ACM function. */
+            usbd_cdc_acm_set_dtr(0, false);
             break;
         default:
             break;

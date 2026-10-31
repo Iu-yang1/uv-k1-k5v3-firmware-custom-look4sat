@@ -17,16 +17,36 @@
 #include "driver/vcp.h"
 #include "usb_config.h"
 #include "py32f071_ll_bus.h"
+#include "driver/system.h"
+#include "usbd_core.h"
+#include "usbd_cdc.h"
+#include "functions.h"
+#include "driver/gpio.h"
 
 #ifdef ENABLE_FEAT_F4HWN_K5VIEWER
 #include "driver/keyboard.h"
 #endif
 
+/* Reset cause is captured once per boot; USB restarts never clear it. */
+volatile uint32_t gVcpBootResetFlags;
+volatile uint32_t gVcpRecoveryCount;
+volatile uint32_t gVcpConfiguredCount;
+static bool gVcpResetFlagsCaptured;
+static bool gVcpWasConfigured;
+static uint8_t gVcpRecoveryTicks;
+static uint8_t gVcpRecoveryAttempts;
+
 uint8_t VCP_RxBuf[VCP_RX_BUF_SIZE];
 volatile uint32_t VCP_RxBufPointer = 0;
 
-void VCP_Init()
+void VCP_Init(void)
 {
+    if (!gVcpResetFlagsCaptured) {
+        gVcpBootResetFlags = RCC->CSR & (RCC_CSR_OBLRSTF | RCC_CSR_PINRSTF |
+            RCC_CSR_PWRRSTF | RCC_CSR_SFTRSTF | RCC_CSR_IWDGRSTF | RCC_CSR_WWDGRSTF);
+        RCC->CSR |= RCC_CSR_RMVF;
+        gVcpResetFlagsCaptured = true;
+    }
     LL_APB1_GRP2_EnableClock(LL_APB1_GRP2_PERIPH_SYSCFG);
     LL_IOP_GRP1_EnableClock(LL_IOP_GRP1_PERIPH_GPIOA); // PA12:11
     LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_USBD);
@@ -40,6 +60,44 @@ void VCP_Init()
 
     NVIC_SetPriority(USBD_IRQn, 3);
     NVIC_EnableIRQ(USBD_IRQn);
+}
+
+/* Called in the foreground only: the controller reset drops the on-chip
+ * USB device state, while leaving radio state and the MCU running. */
+bool VCP_RestartUsb(void)
+{
+    if (gCurrentFunction == FUNCTION_TRANSMIT || GPIO_IsPttPressed()) return false;
+    /* Cancel the old L4S session and its PTT lease before re-enumeration. */
+    usbd_cdc_acm_set_dtr(0, false);
+    /* The CherryUSB list is cleared during deinit: mask the USB IRQ first,
+     * so the ISR cannot traverse half-deinitialized class state. */
+    NVIC_DisableIRQ(USBD_IRQn);
+    if (usbd_deinitialize() != 0) return false;
+    SYSTEM_DelayMs(150);
+    VCP_RxBufPointer = 0;
+    gVcpWasConfigured = false;
+    gVcpRecoveryTicks = 0;
+    VCP_Init();
+    gVcpRecoveryCount++;
+    return true;
+}
+
+/* Two bounded retries after boot, never a permanent periodic reset loop.
+ * A missing VBUS/CC indication is NOT proof that a host is attached. */
+void VCP_RecoveryTick500ms(bool radioTransmitting)
+{
+    if (usb_device_is_configured()) {
+        if (!gVcpWasConfigured) gVcpConfiguredCount++;
+        gVcpWasConfigured = true;
+        gVcpRecoveryTicks = 0;
+        return;
+    }
+    if (gVcpWasConfigured || radioTransmitting || gVcpRecoveryAttempts >= 2) return;
+    if (gVcpRecoveryTicks < 24) ++gVcpRecoveryTicks;
+    if (gVcpRecoveryTicks == (gVcpRecoveryAttempts == 0 ? 8 : 24)) {
+        ++gVcpRecoveryAttempts;
+        if (VCP_RestartUsb()) gVcpRecoveryTicks = 0;
+    }
 }
 
 #ifdef ENABLE_FEAT_F4HWN_K5VIEWER

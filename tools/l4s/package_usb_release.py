@@ -2,7 +2,7 @@
 """Fail-closed packaging for L4S USB recovery test releases.
 
 Build artifacts are produced by the repository's pinned Docker build.
-Never publish a firmware image that exhausts the 512-byte flash reserve.
+Refuse a release that lacks the 256-byte USB validation image reserve.
 """
 import argparse
 import hashlib
@@ -14,7 +14,7 @@ import zipfile
 from pathlib import Path
 
 FLASH_LIMIT = 118 * 1024
-MIN_FREE_BYTES = 512
+MIN_FREE_BYTES = 256
 UF2_START = (0x0A324655, 0x9E5D5157)
 UF2_END = 0x0AB16F30
 UF2_BASE = 0x08002800

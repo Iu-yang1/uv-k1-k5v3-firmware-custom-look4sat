@@ -21,6 +21,7 @@
 #include "usbd_core.h"
 #include "usbd_cdc.h"
 #include "functions.h"
+#include "driver/gpio.h"
 
 #ifdef ENABLE_FEAT_F4HWN_K5VIEWER
 #include "driver/keyboard.h"

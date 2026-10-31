@@ -73,6 +73,7 @@ bool VCP_RestartUsb(void)
     SYSTEM_DelayMs(150);
     VCP_RxBufPointer = 0;
     gVcpWasConfigured = false;
+    gVcpRecoveryTicks = 0;
     VCP_Init();
     gVcpRecoveryCount++;
     return true;

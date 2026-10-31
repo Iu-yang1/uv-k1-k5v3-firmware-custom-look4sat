@@ -42,8 +42,7 @@ volatile uint32_t VCP_RxBufPointer = 0;
 void VCP_Init(void)
 {
     if (!gVcpResetFlagsCaptured) {
-        gVcpBootResetFlags = RCC->CSR & (RCC_CSR_OBLRSTF | RCC_CSR_PINRSTF |
-            RCC_CSR_PWRRSTF | RCC_CSR_SFTRSTF | RCC_CSR_IWDGRSTF | RCC_CSR_WWDGRSTF);
+        gVcpBootResetFlags = RCC->CSR;
         RCC->CSR |= RCC_CSR_RMVF;
         gVcpResetFlagsCaptured = true;
     }
@@ -72,7 +71,7 @@ bool VCP_RestartUsb(void)
     /* The CherryUSB list is cleared during deinit: mask the USB IRQ first,
      * so the ISR cannot traverse half-deinitialized class state. */
     NVIC_DisableIRQ(USBD_IRQn);
-    if (usbd_deinitialize() != 0) return false;
+    usbd_deinitialize();
     SYSTEM_DelayMs(150);
     VCP_RxBufPointer = 0;
     gVcpWasConfigured = false;
@@ -87,17 +86,16 @@ bool VCP_RestartUsb(void)
 void VCP_RecoveryTick500ms(bool radioTransmitting)
 {
     if (usb_device_is_configured()) {
-        if (!gVcpWasConfigured) gVcpConfiguredCount++;
+        if (!gVcpWasConfigured) ++gVcpConfiguredCount;
         gVcpWasConfigured = true;
-        gVcpRecoveryTicks = 0;
         return;
     }
     if (gVcpWasConfigured || radioTransmitting || gVcpRecoveryAttempts >= 2) return;
-    if (gVcpRecoveryTicks < 24) ++gVcpRecoveryTicks;
-    if (gVcpRecoveryTicks == (gVcpRecoveryAttempts == 0 ? 8 : 24)) {
-        ++gVcpRecoveryAttempts;
-        if (VCP_RestartUsb()) gVcpRecoveryTicks = 0;
-    }
+    /* Retry at most twice, spaced by 6 seconds; never reboot the MCU. */
+    if (++gVcpRecoveryTicks < 12) return;
+    gVcpRecoveryTicks = 0;
+    ++gVcpRecoveryAttempts;
+    VCP_RestartUsb();
 }
 
 #ifdef ENABLE_FEAT_F4HWN_K5VIEWER

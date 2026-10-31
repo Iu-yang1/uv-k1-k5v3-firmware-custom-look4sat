@@ -19,6 +19,8 @@
 
 #include "usb_py32_reg.h"
 #include "usbd_core.h"
+#include "py32f071_ll_bus.h"
+#include <string.h>
 
 #define HWREG(x) \
     (*((volatile uint32_t *)(x)))
@@ -165,8 +167,23 @@ int usb_dc_init(void)
   return 0;
 }
 
+/* The old empty deinit kept the USB PHY and interrupt live through a
+ * re-enumeration attempt. Reset the USBD peripheral without resetting the
+ * entire radio (and without driving D+/D- as GPIO outputs). */
 int usb_dc_deinit(void)
 {
+  NVIC_DisableIRQ(USBD_IRQn);
+  USB->INT_USBE = 0;
+  USB->INT_IN1E = 0;
+  USB->INT_OUT1E = 0;
+  NVIC_ClearPendingIRQ(USBD_IRQn);
+  LL_APB1_GRP1_ForceReset(LL_APB1_GRP1_PERIPH_USBD);
+  LL_APB1_GRP1_ReleaseReset(LL_APB1_GRP1_PERIPH_USBD);
+  LL_APB1_GRP1_DisableClock(LL_APB1_GRP1_PERIPH_USBD);
+  memset(&g_pyusb_udc, 0, sizeof(g_pyusb_udc));
+  usb_ep0_state = USB_EP0_STATE_SETUP;
+  zlp_flag = false;
+  usb_dc_low_level_deinit();
   return 0;
 }
 

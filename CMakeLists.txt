@@ -128,8 +128,10 @@ if(ENABLE_LTO)
 endif()
 
 if(ENABLE_L4S_CONTROL)
-    target_compile_options(${EXE_NAME} PRIVATE -Oz -fno-inline-small-functions)
-    target_link_options(${EXE_NAME} PRIVATE -flto-partition=one -fno-inline-small-functions)
+    # Let LTO choose tiny-function inlining; forbidding it globally can
+    # increase call/return overhead on a near-full 118 KiB image.
+    target_compile_options(${EXE_NAME} PRIVATE -Oz)
+    target_link_options(${EXE_NAME} PRIVATE -flto-partition=one)
 endif()
 
 if(ENABLE_LTO AND ENABLE_FEAT_F4HWN_MULTIBOOT_OVERLAY)

@@ -53,6 +53,10 @@
 #include "frequencies.h"
 #include "misc.h"
 #include "radio.h"
+#if defined(ENABLE_USB) && defined(ENABLE_L4S_CONTROL)
+#include "driver/vcp.h"
+#include "driver/gpio.h"
+#endif
 #include "settings.h"
 #include "ui/inputbox.h"
 #include "ui/main.h"
@@ -491,6 +495,25 @@ static void processFKeyLongFunction(const KEY_Code_t Key)
         case KEY_4:
             ACTION_SwitchFilter();
             break;
+
+#if defined(ENABLE_USB) && defined(ENABLE_L4S_CONTROL)
+        case KEY_7:
+            /* F + long 7: user-triggered USB PHY re-enumeration. Do not
+             * interrupt RF transmission or a physical PTT press. */
+            gBeepToPlay = VCP_RestartUsb() ? BEEP_1KHZ_60MS_OPTIONAL
+                                           : BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
+            break;
+        case KEY_6:
+            /* F + long 6: explicit software-reset diagnostic, never a
+             * watchdog or automatic reboot. Do not interrupt RF/flash. */
+            if (gCurrentFunction != FUNCTION_TRANSMIT && !GPIO_IsPttPressed() &&
+                !gRequestSaveSettings && !gRequestSaveVFO && !L4S_Active()) {
+                NVIC_SystemReset();
+            } else {
+                gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
+            }
+            break;
+#endif
 
 #if defined(ENABLE_CODE_PRACTICE) && defined(ENABLE_CW_MODULATOR)
         case KEY_5:

@@ -69,6 +69,9 @@ bool VCP_RestartUsb(void)
     if (gCurrentFunction == FUNCTION_TRANSMIT || GPIO_IsPttPressed()) return false;
     /* Cancel the old L4S session and its PTT lease before re-enumeration. */
     usbd_cdc_acm_set_dtr(0, false);
+    /* The CherryUSB list is cleared during deinit: mask the USB IRQ first,
+     * so the ISR cannot traverse half-deinitialized class state. */
+    NVIC_DisableIRQ(USBD_IRQn);
     if (usbd_deinitialize() != 0) return false;
     SYSTEM_DelayMs(150);
     VCP_RxBufPointer = 0;

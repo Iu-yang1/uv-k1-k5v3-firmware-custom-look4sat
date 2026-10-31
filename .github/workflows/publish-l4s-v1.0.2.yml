@@ -1,3 +1,5 @@
+# Hardware-validation prerelease: must retain >=256 B flash, check UF2/BIN
+# and publish the exact merged main source verified by this workflow.
 name: Publish L4S v1.0.2 USB recovery
 
 on:

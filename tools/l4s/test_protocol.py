@@ -9,7 +9,7 @@ class ProtocolTest(unittest.TestCase):
         self.assertEqual(0, self.send(MODE, bytes([3, 3, 0]))[5])
         status = self.send(STATUS)
         self.assertEqual((2, 3), tuple(status[28:30]))  # Effective RX USB / TX CW
-        self.assertEqual(0, self.send(CW, b'\x14\x04TEST')[5])
+        self.assertEqual(1, self.send(CW, b'\x14\x04TEST')[5])  # L4S_ACCEPTED
 
     def test_fm_mode_is_unchanged_by_cw_receive_preference(self):
         self.assertEqual(0, self.pair()[5])

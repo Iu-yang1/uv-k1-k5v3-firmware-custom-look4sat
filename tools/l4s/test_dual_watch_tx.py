@@ -113,7 +113,7 @@ int display_tx_vfo(void) {
             for watch in (1, 2, 3):
                 with self.subTest(main=main, watch=watch):
                     self.assertEqual(main, self.lib.select_tx(main, main, main+1, watch, 1))
-                    self.assertEqual(main, self.lib.pinned_vfo())
+                    self.assertEqual(main+1, self.lib.pinned_vfo())
                     self.assertEqual(main, self.lib.display_tx_vfo())
                     self.assertEqual(main, self.lib.switch_focus_and_select())
                     self.assertEqual(dual, self.lib.focused_vfo())

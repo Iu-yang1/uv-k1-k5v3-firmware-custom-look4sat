@@ -48,6 +48,12 @@ static bool local_save_pending,completion_handled;
 static bool apply_user_config(const L4S_UserConfig *config);
 static void apply_tone(FREQ_Config_t *target, uint8_t choice);
 static void setup_receive(void);
+/* Legacy saved mode 1 (RX CW / TX CW) becomes RX USB / TX CW in L4S.
+   Normalize only in RAM; do not rewrite stored profiles without consent. */
+static void prefer_usb_receive_for_saved_cw(L4S_UserConfig *c)
+{
+    if (c->mode == 1) c->mode = 2;
+}
 static void profile_read(uint32_t address,void *data,unsigned size);
 static struct {
     VFO_Info_t vfo[2];
@@ -131,6 +137,7 @@ static bool enter(void)
     L4S_DefaultConfig(&profile); profile.power=original_tx.OUTPUT_POWER;
     PY25Q16_ReadBuffer(L4S_PROFILE_ADDR,record,sizeof(record));
     state.saved_settings_valid=L4S_DecodeProfile(record,&profile);
+    prefer_usb_receive_for_saved_cw(&profile);
     state.saved_settings=profile;memset(state.saved_key,0,16);memset(state.context_key,0,16);
     if(state.saved_settings_valid) memcpy(state.saved_key,L4S_GetProfileKey(),16);
     state.user_modified=false;
@@ -336,6 +343,7 @@ static uint8_t select_profile(uint8_t operation,const uint8_t *p)
         profile_read(L4S_PROFILE_ADDR,record,sizeof(record));
         if(L4S_DecodeProfile(record,&legacy) && !memcmp(L4S_GetProfileKey(),p+16,16)) {candidate=legacy;found=true;}
     }
+    prefer_usb_receive_for_saved_cw(&candidate);
     if(!apply_user_config(&candidate)) return L4S_TX_REJECTED;
     profile=state.settings=state.saved_settings=candidate;
     memcpy(state.context_key,p,16);memcpy(state.saved_key,p,16);
@@ -394,7 +402,11 @@ void L4S_ControlTick(void)
         if(state.session) {
             L4S_UserConfig current;bool found;
             if(local_save_pending){current=pending_config;found=true;}
-            else {L4S_DefaultConfig(&current);found=L4S_LoadSatelliteProfile(state.context_key,&current,profile_read);}
+            else {
+                L4S_DefaultConfig(&current);
+                found=L4S_LoadSatelliteProfile(state.context_key,&current,profile_read);
+                prefer_usb_receive_for_saved_cw(&current);
+            }
             const bool unchanged=!local_save_pending && found==state.saved_settings_valid &&
                 (!found || L4S_ConfigEqual(&current,&state.saved_settings));
             if(!unchanged && apply_user_config(&current)) {

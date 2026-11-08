@@ -30,6 +30,9 @@
 #include "ui/ui.h"
 #include <string.h>
 
+_Static_assert(MODULATION_FM==L4S_FM && MODULATION_AM==L4S_AM &&
+    MODULATION_USB==L4S_USB && MODULATION_CW==L4S_CW_MODE,
+    "L4S and radio modulation IDs must agree");
 static L4S_State state;
 static bool initialized, release_latch;
 static bool key_release_latch;
@@ -143,8 +146,8 @@ static bool enter(void)
     state.user_modified=false;
     state.profile_selected=false;state.step_hz=250;
     apply_user_config(&profile); state.settings=profile;
-    state.rx_mode=profile.mode==0 || profile.mode==3 ? L4S_FM : profile.mode==1 ? L4S_CW_MODE : L4S_USB;
-    state.tx_mode=profile.mode==0 || profile.mode==3 ? L4S_FM : L4S_CW_MODE;
+    state.rx_mode=gRxVfo->Modulation;
+    state.tx_mode=gTxVfo->Modulation;
     memset(&menu,0,sizeof(menu)); state.menu_open=false;
     usb_lost=false;
     gRequestDisplayScreen=DISPLAY_INVALID;
@@ -352,8 +355,8 @@ static uint8_t select_profile(uint8_t operation,const uint8_t *p)
     state.context_valid=false;state.pass_phase=0;state.pass_seconds=0;
     state.pair_ready=state.mode_ready=false;state.user_modified=false;
     state.arm_next=false;state.arm_active=false;
-    state.rx_mode=candidate.mode==0 || candidate.mode==3 ? L4S_FM : candidate.mode==1 ? L4S_CW_MODE : L4S_USB;
-    state.tx_mode=candidate.mode==0 || candidate.mode==3 ? L4S_FM : L4S_CW_MODE;
+    state.rx_mode=gRxVfo->Modulation;
+    state.tx_mode=gTxVfo->Modulation;
     gUpdateDisplay=true;return L4S_APPLIED;
 }
 static uint8_t store_command(const uint8_t *p,size_t n) {
@@ -412,8 +415,8 @@ void L4S_ControlTick(void)
             if(!unchanged && apply_user_config(&current)) {
                 profile=state.settings=state.saved_settings=current;memcpy(state.saved_key,state.context_key,16);
                 state.saved_settings_valid=found;state.user_modified=true;state.profile_generation++;
-                state.rx_mode=current.mode==0 || current.mode==3 ? L4S_FM : current.mode==1 ? L4S_CW_MODE : L4S_USB;
-                state.tx_mode=current.mode==0 || current.mode==3 ? L4S_FM : L4S_CW_MODE;
+                state.rx_mode=gRxVfo->Modulation;
+                state.tx_mode=gTxVfo->Modulation;
                 state.pair_ready=false;state.mode_ready=found;
                 state.arm_next=local_save_pending && menu.arm_next;
                 if(!found)state.applied.tx_enabled=false;
@@ -485,8 +488,8 @@ bool L4S_LocalKey(KEY_Code_t key, bool pressed, bool held)
                             profile=state.settings=menu.draft;
                             state.saved_settings=profile;memcpy(state.saved_key,state.context_key,16);
                             state.saved_settings_valid=true;state.user_modified=true;
-                            state.rx_mode=profile.mode==0 || profile.mode==3 ? L4S_FM : profile.mode==1 ? L4S_CW_MODE : L4S_USB;
-                            state.tx_mode=profile.mode==0 || profile.mode==3 ? L4S_FM : L4S_CW_MODE;
+                            state.rx_mode=gRxVfo->Modulation;
+                            state.tx_mode=gTxVfo->Modulation;
                             state.mode_ready=true;state.arm_next=menu.arm_next;
                             state.pair_ready=false;state.profile_generation++;
                             menu.open=false;

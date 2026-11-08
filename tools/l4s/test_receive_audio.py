@@ -82,10 +82,16 @@ static bool L4S_Active(void) {return true;}
 '''
         harness += '\n'+function(cwapp, 'void CW_EndTxNow(')
         harness += '\n'+function(control, 'static bool apply_rx_mode(')
+        harness += '\n'+function(control, 'static void prefer_usb_receive_for_saved_cw(')
         harness += '\n'+function(settings, 'static uint8_t change(')
         harness += '\n'+function(settings, 'bool L4S_MenuKey(')
         harness += '\n'+function(rit, 'uint32_t CW_RIT_RxFrequency(')
         harness += r'''
+unsigned loaded_mode(unsigned mode) {
+    L4S_UserConfig config={0};config.mode=mode;
+    prefer_usb_receive_for_saved_cw(&config);
+    return config.mode;
+}
 void select_rx(unsigned mode,unsigned sql) {
     vfo.Modulation=mode;gEeprom.SQUELCH_LEVEL=sql;listen_calls=0;
     RADIO_SetModulation(mode);setup_receive();
@@ -145,6 +151,10 @@ unsigned editing(void) {return menu.editing;}
                 _ctypes.FreeLibrary(lib._handle)
         cls.libs.clear()
         cls.folder.cleanup()
+
+    def test_legacy_stored_cw_uses_usb_rx_without_changing_other_modes(self):
+        for lib in self.libs:
+            self.assertEqual([0, 2, 2, 3], [lib.loaded_mode(mode) for mode in range(4)])
 
     def test_cw_profile_survives_disabled_optional_effects_and_mode_changes(self):
         for lib in self.libs:

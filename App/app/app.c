@@ -999,7 +999,11 @@ static VFO_Info_t *FullWatchLoadPriority(uint8_t priority, uint16_t channel, con
 
 static uint8_t FullWatchReplacementVfo(void)
 {
-    return gEeprom.TX_VFO ^ (gEeprom.CROSS_BAND_RX_TX != CROSS_BAND_OFF);
+    // FULL WATCH must not promote a background slot over pinned MAIN TX.
+    const uint8_t main = gEeprom.CROSS_BAND_RX_TX != CROSS_BAND_OFF &&
+                         gEeprom.DUAL_WATCH != DUAL_WATCH_OFF
+        ? gEeprom.CROSS_BAND_RX_TX - CROSS_BAND_CHAN_A : gEeprom.TX_VFO;
+    return main ^ (gEeprom.CROSS_BAND_RX_TX != CROSS_BAND_OFF);
 }
 
 static void FullWatchInitialize(void)

@@ -19,6 +19,10 @@ with NR7Y CW and L4S engines from Be-Galaxy (`f242b481`).
 - 56 satellite/transponder profiles with RX/TX bases, fixed corrections, modes,
   power, tones, squelch and CW parameters; transactional save/import/delete.
 - Native CW menus, manual keying, Iambic A/B/Ultimatic/Bug, RIT/XIT and code practice.
+- L4S satellite CW sessions now default to **USB receive / CW transmit**, including
+  legacy CW profiles and CW/CW requests sent by the phone. There is **no automatic
+  600 Hz RX/BFO correction** in USB mode; tune RX independently as needed.
+  Normal handset CW operation outside L4S is unchanged.
 - Full FM/AM audio presets and CW/USB receive configuration. CW/USB always monitor
   without changing saved squelch; FM/NFM retain squelch. In the Doppler MENU,
   `RX CW/USB` applies on confirmation; permanent saving still needs handset confirmation.
@@ -66,7 +70,10 @@ physical paddles, power-loss recovery or Multiboot hardware behavior.
 手机 PTT、56 组卫星档案和多固件／多配置切换。F1–F4 每槽 92 字符，
 同步与永久档案操作仍须手台确认；可读取旧八槽宏的前四槽。
 
-恢复 FM／AM 音效预设及 CW／USB 接收配置。CW／USB 始终开放监听，
+恢复 FM／AM 音效预设及 CW／USB 接收配置。L4S 卫星 CW 会话默认使用
+**USB 接收 / CW 发射**，兼容旧 CW 档案（只在运行时转换，不改写 Flash），
+且 USB 接收不自动施加 600 Hz 频率偏移。普通手台 CW 模式不受影响。
+CW／USB 始终开放监听，
 不改写保存的静噪值；FM／NFM 保留静噪。多普勒 MENU 新增 `RX CW/USB`，
 确认后立即应用，永久保存仍需手台确认。L4S 专用版关闭 K5Viewer 屏幕镜像
 和 1750 Hz 呼叫音，为音效与卫星控制保留空间；USB CAT 不受影响。

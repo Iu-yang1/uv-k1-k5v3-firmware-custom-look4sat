@@ -425,7 +425,7 @@ void CW_ErrorBeep(void)
     // Only CW runs the sidetone path, and the dit must not cut into keying, other
     // playback, a repeating macro's pause (starting playback cancels the repeat) or
     // a recording. Those get the double beep, which is silent in CW.
-    if (gTxVfo->Modulation != MODULATION_CW || gCW_Recording || gCW_PlaybackActive
+    if (gCurrentVfo->Modulation != MODULATION_CW || gCW_Recording || gCW_PlaybackActive
         || gCW_PlaybackRepeat || !CW_KeyerIsIdle()) {
         gBeepToPlay = BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL;
         return;

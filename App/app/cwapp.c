@@ -114,7 +114,7 @@ void CW_AppUpdate(void)
         return;
     }
 #endif
-	if (!(gTxVfo->Modulation == MODULATION_CW
+	if (!(gCurrentVfo->Modulation == MODULATION_CW
 #ifdef ENABLE_CODE_PRACTICE
 		|| gCW_CpoActive
 #endif

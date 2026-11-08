@@ -1,12 +1,12 @@
-# Look4Sat L4S firmware 1.0.2 — F4HWN 6.3.0
+# Look4Sat L4S firmware 1.0.3 — F4HWN 6.3.0
 
-> **USB recovery hardware-validation pre-release.** [v1.0.2 release notes](docs/l4s-v1.0.2-release.md).
+> **CW USB RX / CW TX and MAIN TX DUAL RX hardware-validation iteration.** [v1.0.3 release notes](docs/l4s-v1.0.3-release.md).
 > UV-K1/UV-K5 V3 only; direct Type-C enumeration remains unverified on physical hardware.
 > Idle handset controls: F + long 7 restarts USB; F + long 6 tests an MCU reset.
-> Existing v1.0.1 feature and module compatibility are otherwise retained.
+> Retains the v1.0.2 USB recovery features and existing API-4 module compatibility.
 
 
-[Download firmware and modules](https://github.com/Iu-yang1/uv-k1-k5v3-firmware-custom-look4sat/releases/latest)
+[Download L4S v1.0.3 firmware](https://github.com/Iu-yang1/uv-k1-k5v3-firmware-custom-look4sat/releases/tag/l4s-v1.0.3)
 
 Dedicated satellite/CW firmware for **UV-K1 / UV-K5 V3 (PY32F071)**.
 Not compatible with the original UV-K5. Based on F4HWN 6.3.0 (`3574e94`),
@@ -68,7 +68,7 @@ physical paddles, power-loss recovery or Multiboot hardware behavior.
 
 ## 中文
 
-**L4S 1.0.2 USB 恢复迭代测试版，基于 F4HWN 6.3.0**，适用于 UV-K1／UV-K5 V3，
+**L4S 1.0.3 CW 收发及双守候修复迭代测试版，基于 F4HWN 6.3.0**，适用于 UV-K1／UV-K5 V3，
 不适用于原版 UV-K5。保留完整 NR7Y CW、USB CAT、独立 RX/TX 多普勒、
 手机 PTT、56 组卫星档案和多固件／多配置切换。F1–F4 每槽 92 字符，
 同步与永久档案操作仍须手台确认；可读取旧八槽宏的前四槽。

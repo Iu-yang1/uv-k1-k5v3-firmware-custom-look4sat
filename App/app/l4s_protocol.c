@@ -209,7 +209,7 @@ static uint8_t execute(L4S_State *s, uint16_t cmd, const uint8_t *p, size_t n)
         s->error=0;
         return L4S_APPLIED;
     }
-    case L4S_MODE:
+    case L4S_MODE: {
         if (n != 3) return L4S_BAD_LENGTH;
         if (s->store_busy || s->tx_window_open || s->owner || s->ops->tx_state()) return L4S_BUSY;
         if (p[0] > L4S_CW_MODE || (p[1] != L4S_FM && p[1] != L4S_CW_MODE) || p[2] > 2) return L4S_UNSUPPORTED;
@@ -221,6 +221,7 @@ static uint8_t execute(L4S_State *s, uint16_t cmd, const uint8_t *p, size_t n)
         s->settings.mode=p[1]==L4S_FM ? (p[2] ? 3 : 0) : rx_mode==L4S_USB ? 2 : 1;
         s->user_modified=false;
         return L4S_APPLIED;
+    }
     case L4S_TONE:
         if (n != 2) return L4S_BAD_LENGTH;
         if (s->store_busy || s->tx_window_open || s->owner || s->ops->tx_state()) return L4S_BUSY;

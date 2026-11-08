@@ -155,7 +155,7 @@ int display_tx_vfo(void) {
 
     def test_crossband_without_dual_watch_retains_main_tx(self):
         for main in (0, 1):
-            self.assertEqual(main, self.lib.select_tx(main, 1-main, 1, 0, 1))
+            self.assertEqual(main, self.lib.select_tx(main, 1-main, main+1, 0, 1))
             self.assertEqual(main, self.lib.display_tx_vfo())
 
     def test_regular_dual_watch_preserves_talkback(self):

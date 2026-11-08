@@ -1173,7 +1173,7 @@ static void CheckRadioInterrupts(void)
         return;
 
 	#ifdef ENABLE_CW_MODULATOR
-		if (gCW_CpoActive || CW_LocalSidetoneHeld() || ( gCurrentFunction == FUNCTION_TRANSMIT && gTxVfo->Modulation == MODULATION_CW))
+		if (gCW_CpoActive || CW_LocalSidetoneHeld() || ( gCurrentFunction == FUNCTION_TRANSMIT && gCurrentVfo->Modulation == MODULATION_CW))
 			return;  // no interrupts during CW TX, the local sidetone or CPO app
 	#endif
 
@@ -3028,7 +3028,7 @@ Skip:
         RADIO_SelectVfos();
 
 #ifdef ENABLE_CW_MODULATOR
-		CW_KeyerReconfigure(gTxVfo->Modulation==MODULATION_CW);
+		CW_KeyerReconfigure(gCurrentVfo->Modulation==MODULATION_CW);
 		gMonitor = (gRxVfo->Modulation == MODULATION_CW ||
 		            gRxVfo->Modulation == MODULATION_USB);
 #endif

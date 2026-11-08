@@ -31,9 +31,25 @@ jobs:
 
   aislop-review:
     runs-on: ubuntu-latest
-    continue-on-error: true # C firmware may be outside scanner language coverage
     steps:
       - uses: actions/checkout@v4
-      - uses: scanaislop/aislop@v1
         with:
-          version: latest
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Review only PR changes with aislop
+        run: npx --yes aislop@latest scan --changes --base origin/main --json > aislop-report.json
+      - name: Summarize aislop findings
+        run: |
+          python3 - <<'PY'
+          import json
+          with open('aislop-report.json', encoding='utf-8') as f:
+              report = json.load(f)
+          print('score:', report.get('score'), 'scoreable:', report.get('scoreable'))
+          print('summary:', report.get('summary'))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aislop-pr-review
+          path: aislop-report.json

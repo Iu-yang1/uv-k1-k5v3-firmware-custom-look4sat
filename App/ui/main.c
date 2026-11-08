@@ -1721,9 +1721,12 @@ void UI_DisplayMain(void)
     UI_DisplayUnlockKeyboard(isMainOnly() ? 5 : 3);
 #endif
 
-    // Dual-watch talk-back follows RX only when MAIN TX is not locked.
-    unsigned int activeTxVFO = (gEeprom.CROSS_BAND_RX_TX == CROSS_BAND_OFF && gRxVfoIsActive)
-        ? gEeprom.RX_VFO : gEeprom.TX_VFO;
+    // In MAIN TX DUAL RX, the VFO focus may be SUB but TX remains MAIN.
+    unsigned int activeTxVFO = gEeprom.CROSS_BAND_RX_TX != CROSS_BAND_OFF &&
+                               gEeprom.DUAL_WATCH != DUAL_WATCH_OFF
+        ? gEeprom.CROSS_BAND_RX_TX - CROSS_BAND_CHAN_A
+        : (gEeprom.CROSS_BAND_RX_TX == CROSS_BAND_OFF && gRxVfoIsActive)
+            ? gEeprom.RX_VFO : gEeprom.TX_VFO;
 
     for (unsigned int vfo_num = 0; vfo_num < 2; vfo_num++)
     {

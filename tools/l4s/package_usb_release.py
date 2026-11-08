@@ -95,7 +95,7 @@ def main() -> None:
     (out / "verification.json").write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
 
     install = (
-        "L4S v1.0.2 USB recovery test build for UV-K1 / UV-K5 V3 PY32F071.\n"
+        f"Look4Sat L4S {args.tag} hardware-validation build for UV-K1 / UV-K5 V3 PY32F071.\n"
         "NOT compatible with original UV-K5. Hardware USB-C direct enumeration unverified.\n"
         "Back up calibration, channels, satellite profiles and firmware first.\n"
         "Use UV Studio / multiboot with a working Fusion recovery slot.\n"

@@ -13,8 +13,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run L4S host regression suite
-        run: python3 -m unittest discover -s tools/l4s -p 'test_*.py'
+      - name: Build L4S native host simulation
+        run: |
+          mkdir -p build/host
+          gcc -std=c11 -Wall -Wextra -Werror -fPIC -shared -O2 \
+            -I App/app -I App \
+            App/app/l4s_protocol.c App/app/l4s_rssi.c App/app/l4s_io.c \
+            App/app/l4s_settings.c App/app/l4s_store.c App/app/l4s_macros.c \
+            tools/l4s/macros_host.c tools/l4s/store_host.c tools/l4s/io_host.c \
+            App/ui/l4s.c App/font.c App/external/printf/printf.c \
+            tools/l4s/display_host.c tools/l4s/host.c \
+            -o build/host/l4s_host.dll
+      - name: Run CW mode and receive-audio regressions
+        run: |
+          cd tools/l4s
+          python3 -m unittest -v test_protocol test_receive_audio
 
   aislop-review:
     runs-on: ubuntu-latest

@@ -1164,7 +1164,7 @@ static void RADIO_SetTxParametersEx(bool fm)
 	else
 #endif
     // TX compressor
-    BK4819_SetCompander((gRxVfo->Modulation == MODULATION_FM && (gRxVfo->Compander == 1 || gRxVfo->Compander >= 3)) ? gRxVfo->Compander : 0);
+    BK4819_SetCompander((gCurrentVfo->Modulation == MODULATION_FM && (gCurrentVfo->Compander == 1 || gCurrentVfo->Compander >= 3)) ? gCurrentVfo->Compander : 0);
 
     BK4819_PrepareTransmit();
 
@@ -1365,8 +1365,9 @@ void RADIO_SetVfoState(VfoState_t State)
         VfoState[1] = VFO_STATE_TX_DISABLE;
     } else {
         // 1of11
-        const unsigned int vfo = (gEeprom.CROSS_BAND_RX_TX == CROSS_BAND_OFF)
-            ? gEeprom.RX_VFO : (gCurrentVfo - gEeprom.VfoInfo);
+        const unsigned int vfo = gEeprom.CROSS_BAND_RX_TX == CROSS_BAND_OFF
+            ? gEeprom.RX_VFO : gEeprom.DUAL_WATCH == DUAL_WATCH_OFF
+            ? gEeprom.TX_VFO : gEeprom.CROSS_BAND_RX_TX - CROSS_BAND_CHAN_A;
         VfoState[vfo] = State;
     }
 

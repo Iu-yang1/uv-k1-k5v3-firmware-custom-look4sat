@@ -39,7 +39,10 @@ jobs:
         with:
           node-version: 24
       - name: Review only PR changes with aislop
-        run: npx --yes aislop@latest scan --changes --base origin/main --json > aislop-report.json
+        run: |
+          # The scanner exits 1 for findings; preserve its JSON and inspect separately.
+          npx --yes aislop@latest scan --changes --base origin/main --json > aislop-report.json || true
+          test -s aislop-report.json
       - name: Summarize aislop findings
         run: |
           python3 - <<'PY'

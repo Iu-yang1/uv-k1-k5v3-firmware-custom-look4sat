@@ -840,10 +840,9 @@ void RADIO_ApplyOffset(VFO_Info_t *pInfo)
 
 static void RADIO_SelectCurrentVfo(void)
 {
-    // When DW and cross-band are enabled, CROSS_BAND_RX_TX (1=A, 2=B)
-    // pins the MAIN transmit VFO independently of the editable RX focus.
+    // CROSS_BAND_RX_TX encodes the actual MAIN TX VFO: 0=off, 1=A, 2=B.
+    // Focused/editable TX_VFO may differ after F+2 while Dual Watch is on.
     gCurrentVfo = gEeprom.CROSS_BAND_RX_TX == CROSS_BAND_OFF ? gRxVfo :
-        gEeprom.DUAL_WATCH == DUAL_WATCH_OFF ? gTxVfo :
         &gEeprom.VfoInfo[gEeprom.CROSS_BAND_RX_TX - CROSS_BAND_CHAN_A];
 }
 
@@ -1366,8 +1365,7 @@ void RADIO_SetVfoState(VfoState_t State)
     } else {
         // 1of11
         const unsigned int vfo = gEeprom.CROSS_BAND_RX_TX == CROSS_BAND_OFF
-            ? gEeprom.RX_VFO : gEeprom.DUAL_WATCH == DUAL_WATCH_OFF
-            ? gEeprom.TX_VFO : gEeprom.CROSS_BAND_RX_TX - CROSS_BAND_CHAN_A;
+            ? gEeprom.RX_VFO : gEeprom.CROSS_BAND_RX_TX - CROSS_BAND_CHAN_A;
         VfoState[vfo] = State;
     }
 

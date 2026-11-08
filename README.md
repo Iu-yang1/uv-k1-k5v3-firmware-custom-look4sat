@@ -23,6 +23,9 @@ with NR7Y CW and L4S engines from Be-Galaxy (`f242b481`).
   legacy CW profiles and CW/CW requests sent by the phone. There is **no automatic
   600 Hz RX/BFO correction** in USB mode; tune RX independently as needed.
   Normal handset CW operation outside L4S is unchanged.
+- MAIN TX DUAL RX: PTT always transmits using the selected MAIN channel
+  (frequency, mode, power and tone), regardless of which dual-watch channel is
+  currently being received. Ordinary dual-watch talk-back remains unchanged.
 - Full FM/AM audio presets and CW/USB receive configuration. CW/USB always monitor
   without changing saved squelch; FM/NFM retain squelch. In the Doppler MENU,
   `RX CW/USB` applies on confirmation; permanent saving still needs handset confirmation.

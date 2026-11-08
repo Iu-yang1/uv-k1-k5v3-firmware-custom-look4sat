@@ -16,7 +16,7 @@ In v1.0.4:
 
 ## Reproduction / verification
 
-To test MAIN=A (434.815 MHz) and SUB=B (439.815 MHz), select A first, enable MAIN TX DUAL RX, then press F+2 to focus B. The receive/editing marker can move to B while **PTT must transmit on the originally anchored A**. Repeat with MAIN=B and SUB=A. Use authorized test frequencies and a **dummy load with an SDR or frequency counter**.
+To test MAIN=A (434.815 MHz) and SUB=B (439.815 MHz), select A first, **re-confirm and save the MAIN TX DUAL RX menu setting even if it already reads that mode**, then press F+2 to focus B. **This re-anchors TX after upgrading from v1.0.3, which may have persisted the wrong SUB TX VFO in EEPROM.** The receive/editing marker can move to B while **PTT must transmit on the originally anchored A**. Repeat with MAIN=B and SUB=A. Use authorized test frequencies and a **dummy load with an SDR or frequency counter**.
 
 Automated tests execute the production F+2 switch routine and transmitter VFO selection, and check the TX programming source. The publishing workflow rebuilds L4S and Fusion from the exact release commit, requires 256 bytes minimum free Flash, validates BIN/UF2 correspondence, image vectors and SHA-256, and compares all published assets with the package.
 
@@ -46,6 +46,6 @@ v1.0.3 虽然让发射过程使用 `gTxVfo`，但按 **F+2** 切换到 SUB 时�
 
 ### 实机验收
 
-以截图中的上方 434.815 MHz 为 MAIN、下方 439.815 MHz 为 SUB，先选定 MAIN 并进入 MAIN TX DUAL RX，再按 F+2 切换到 SUB 监听，按下 PTT 必须在最初锁定的 MAIN 发射。随后交换 A/B 重复验证。
+以截图中的上方 434.815 MHz 为 MAIN、下方 439.815 MHz 为 SUB，先选中 434.815 MHz，**即使菜单已显示 MAIN TX DUAL RX，也必须进入该菜单重新确认并保存一次**，然后按 F+2 切换到 SUB 监听，按下 PTT 必须在最初锁定的 MAIN 发射。这样可覆盖 v1.0.3 曾经错误写入 EEPROM 的 SUB 发射绑定。随后交换 A/B 重复验证。
 
 **请使用假负载与频率计／SDR，并确保测试频率符合许可；不要依赖发射红灯或 UI 文本判断实际 RF 频率。** CI 通过不能替代实机检查。刷机前备份校准和数据，保留 Fusion 恢复槽，不要覆盖校准区，也不要在仅 USB 供电时发射。

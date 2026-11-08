@@ -213,9 +213,12 @@ static uint8_t execute(L4S_State *s, uint16_t cmd, const uint8_t *p, size_t n)
         if (n != 3) return L4S_BAD_LENGTH;
         if (s->store_busy || s->tx_window_open || s->owner || s->ops->tx_state()) return L4S_BUSY;
         if (p[0] > L4S_CW_MODE || (p[1] != L4S_FM && p[1] != L4S_CW_MODE) || p[2] > 2) return L4S_UNSUPPORTED;
-        if (!s->ops->mode(p[0],p[1],p[2])) return L4S_TX_REJECTED;
-        s->rx_mode=p[0]; s->tx_mode=p[1]; s->narrow=p[2]; s->mode_ready=true;
-        s->settings.mode=p[1]==L4S_FM ? (p[2] ? 3 : 0) : p[0]==L4S_USB ? 2 : 1;
+        /* L4S CW operation uses USB reception without an automatic BFO shift.
+           Leave TX as CW and report the effective RX mode to the phone. */
+        const uint8_t rx_mode=p[1]==L4S_CW_MODE && p[0]==L4S_CW_MODE ? L4S_USB : p[0];
+        if (!s->ops->mode(rx_mode,p[1],p[2])) return L4S_TX_REJECTED;
+        s->rx_mode=rx_mode; s->tx_mode=p[1]; s->narrow=p[2]; s->mode_ready=true;
+        s->settings.mode=p[1]==L4S_FM ? (p[2] ? 3 : 0) : rx_mode==L4S_USB ? 2 : 1;
         s->user_modified=false;
         return L4S_APPLIED;
     case L4S_TONE:

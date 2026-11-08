@@ -19,7 +19,9 @@ class DualWatchTxTest(unittest.TestCase):
         cls.temp = tempfile.TemporaryDirectory(prefix="l4s-dual-tx-")
         source = (ROOT / "App/radio.c").read_text(encoding="utf-8")
         ui = (ROOT / "App/ui/main.c").read_text(encoding="utf-8")
+        common = (ROOT / "App/app/common.c").read_text(encoding="utf-8")
         select = function(source, "static void RADIO_SelectCurrentVfo(")
+        switch = function(common, "void COMMON_SwitchVFOs(")
         match = re.search(r"unsigned int activeTxVFO\s*=.*?;", ui, re.S)
         if not match:
             raise AssertionError("Unable to find the production TX indicator expression")
@@ -27,15 +29,18 @@ class DualWatchTxTest(unittest.TestCase):
 #include <stdbool.h>
 #include <stdint.h>
 enum { CROSS_BAND_OFF = 0, CROSS_BAND_CHAN_A, CROSS_BAND_CHAN_B };
-enum { DUAL_WATCH_OFF = 0, DUAL_WATCH_CHAN_A, DUAL_WATCH_CHAN_B };
+enum { DUAL_WATCH_OFF = 0, DUAL_WATCH_CHAN_A, DUAL_WATCH_CHAN_B, DUAL_WATCH_FULL };
 typedef struct { uint32_t tx_frequency; } VFO_Info_t;
 static struct {
     int CROSS_BAND_RX_TX, DUAL_WATCH, TX_VFO, RX_VFO;
     VFO_Info_t VfoInfo[2];
 } gEeprom;
 static VFO_Info_t *gTxVfo, *gRxVfo, *gCurrentVfo;
-static bool gRxVfoIsActive;
-""" + select + """
+static bool gRxVfoIsActive, gHasVfoBackup, gFlagReconfigureVfos;
+static bool gScheduleDualWatch, gRequestSaveSettings;
+static int gInputBoxIndex, gRequestDisplayScreen;
+#define DISPLAY_MAIN 0
+""" + select + "\n" + switch + """
 int select_tx(int main, int rx, int crossband, int dual_watch, int active) {
     gEeprom.TX_VFO = main;
     gEeprom.RX_VFO = rx;
@@ -51,6 +56,17 @@ int select_tx(int main, int rx, int crossband, int dual_watch, int active) {
 }
 uint32_t selected_tx_frequency(void) { return gCurrentVfo->tx_frequency; }
 int listening_vfo(void) { return gRxVfo - &gEeprom.VfoInfo[0]; }
+int focused_vfo(void) { return gEeprom.TX_VFO; }
+int pinned_vfo(void) { return gEeprom.CROSS_BAND_RX_TX; }
+int dual_watch_anchor(void) { return gEeprom.DUAL_WATCH; }
+int switch_focus_and_select(void) {
+    COMMON_SwitchVFOs();
+    gEeprom.RX_VFO = gEeprom.TX_VFO;
+    gTxVfo = &gEeprom.VfoInfo[gEeprom.TX_VFO];
+    gRxVfo = &gEeprom.VfoInfo[gEeprom.RX_VFO];
+    RADIO_SelectCurrentVfo();
+    return gCurrentVfo - &gEeprom.VfoInfo[0];
+}
 int display_tx_vfo(void) {
 """ + match.group(0) + """
     return activeTxVFO;
@@ -79,8 +95,8 @@ int display_tx_vfo(void) {
     def test_main_tx_dual_rx_always_uses_selected_main_for_tx(self):
         for main in (0, 1):
             dual = 1 - main
-            for crossband in (1, 2):
-                for dual_watch in (1, 2):
+            for crossband in (main + 1,):
+                for dual_watch in (1, 2, 3):
                     for active in (0, 1):
                         with self.subTest(main=main, crossband=crossband,
                                           watch=dual_watch, active=active):
@@ -91,9 +107,55 @@ int display_tx_vfo(void) {
                             self.assertEqual((14590000, 43510000)[main],
                                              self.lib.selected_tx_frequency())
 
+    def test_focus_switch_does_not_steal_main_transmitter(self):
+        for main in (0, 1):
+            dual = 1-main
+            for watch in (1, 2, 3):
+                with self.subTest(main=main, watch=watch):
+                    self.assertEqual(main, self.lib.select_tx(main, main, main+1, watch, 1))
+                    self.assertEqual(main+1, self.lib.pinned_vfo())
+                    self.assertEqual(main, self.lib.display_tx_vfo())
+                    self.assertEqual(main, self.lib.switch_focus_and_select())
+                    self.assertEqual(dual, self.lib.focused_vfo())
+                    self.assertEqual(dual, self.lib.listening_vfo())
+                    self.assertEqual(main+1, self.lib.pinned_vfo())
+                    self.assertEqual(watch, self.lib.dual_watch_anchor())
+                    self.assertEqual(main, self.lib.display_tx_vfo())
+                    self.assertEqual((14590000, 43510000)[main], self.lib.selected_tx_frequency())
+                    self.assertEqual(main, self.lib.switch_focus_and_select())
+                    self.assertEqual(main, self.lib.focused_vfo())
+                    self.assertEqual(main+1, self.lib.pinned_vfo())
+
+    def test_nonlocked_vfo_switch_still_changes_main(self):
+        for main in (0, 1):
+            dual = 1-main
+            self.lib.select_tx(main, main, 0, 1, 1)
+            self.assertEqual(dual, self.lib.switch_focus_and_select())
+            self.assertEqual(dual, self.lib.focused_vfo())
+            self.assertEqual(dual, self.lib.display_tx_vfo())
+            self.lib.select_tx(main, main, main+1, 0, 1)
+            self.assertEqual(dual, self.lib.switch_focus_and_select())
+            self.assertEqual(dual+1, self.lib.pinned_vfo())
+
+    def test_tx_register_path_uses_pinned_current_vfo(self):
+        source = (ROOT / "App/radio.c").read_text(encoding="utf-8")
+        tx = function(source, "static void RADIO_SetTxParametersEx(bool fm)")
+        for fragment in (
+            "RADIO_ResolveFilter(gCurrentVfo)",
+            "gCurrentVfo->pTX->Frequency",
+            "CW_RIT_TxFrequency(gCurrentVfo, tx_frequency)",
+            "gCurrentVfo->TXP_CalculatedSetting",
+            "gCurrentVfo->pTX->CodeType",
+            "gCurrentVfo->Modulation",
+        ):
+            with self.subTest(fragment=fragment):
+                self.assertIn(fragment, tx)
+        self.assertNotIn("gTxVfo->Modulation", tx)
+        self.assertIn("BK4819_SetFrequency(tx_frequency)", tx)
+
     def test_crossband_without_dual_watch_retains_main_tx(self):
         for main in (0, 1):
-            self.assertEqual(main, self.lib.select_tx(main, 1-main, 1, 0, 1))
+            self.assertEqual(main, self.lib.select_tx(main, 1-main, main+1, 0, 1))
             self.assertEqual(main, self.lib.display_tx_vfo())
 
     def test_regular_dual_watch_preserves_talkback(self):

@@ -840,10 +840,10 @@ void RADIO_ApplyOffset(VFO_Info_t *pInfo)
 
 static void RADIO_SelectCurrentVfo(void)
 {
-    // In MAIN TX / DUAL RX, dual watch may have parked gRxVfo on the
-    // background channel. Cross-band TX must always use the selected MAIN VFO.
-    // Without cross-band, retain the normal dual-watch talk-back behavior.
-    gCurrentVfo = (gEeprom.CROSS_BAND_RX_TX == CROSS_BAND_OFF) ? gRxVfo : gTxVfo;
+    // CROSS_BAND_RX_TX encodes the actual MAIN TX VFO: 0=off, 1=A, 2=B.
+    // Focused/editable TX_VFO may differ after F+2 while Dual Watch is on.
+    gCurrentVfo = gEeprom.CROSS_BAND_RX_TX == CROSS_BAND_OFF ? gRxVfo :
+        &gEeprom.VfoInfo[gEeprom.CROSS_BAND_RX_TX - CROSS_BAND_CHAN_A];
 }
 
 void RADIO_SelectVfos(void)
@@ -853,16 +853,15 @@ void RADIO_SelectVfos(void)
 
     gTxVfo = &gEeprom.VfoInfo[gEeprom.TX_VFO];
     gRxVfo = &gEeprom.VfoInfo[gEeprom.RX_VFO];
+    RADIO_SelectCurrentVfo();
 
     #ifdef ENABLE_CW_MODULATOR
     // Set gMonitor default for CW and USB/SSB: open squelch by default.
     // CW_KeyerReconfigure is always called (false = deactivate when not CW).
-    CW_KeyerReconfigure(gTxVfo->Modulation == MODULATION_CW);
+    CW_KeyerReconfigure(gCurrentVfo->Modulation == MODULATION_CW);
     gMonitor = (gRxVfo->Modulation == MODULATION_CW ||
                 gRxVfo->Modulation == MODULATION_USB);
 #endif
-
-    RADIO_SelectCurrentVfo();
 }
 
 #ifdef ENABLE_EXTRA_FILTER
@@ -1142,7 +1141,7 @@ static void RADIO_SetTxParametersEx(bool fm)
 	const BK4819_FilterBandwidth_t Bandwidth = RADIO_ResolveFilter(gCurrentVfo);
 
 #ifdef ENABLE_CW_MODULATOR
-	if(gTxVfo->Modulation != MODULATION_CW)
+	if(gCurrentVfo->Modulation != MODULATION_CW)
 #endif
     AUDIO_AudioPathOff();
 
@@ -1154,17 +1153,17 @@ static void RADIO_SetTxParametersEx(bool fm)
 
 	uint32_t tx_frequency = gCurrentVfo->pTX->Frequency;
 #ifdef ENABLE_CW_MODULATOR
-	tx_frequency = CW_RIT_TxFrequency(gTxVfo, tx_frequency);  // cross-mode pitch plus XIT
+	tx_frequency = CW_RIT_TxFrequency(gCurrentVfo, tx_frequency);  // cross-mode pitch plus XIT
 #endif
 	BK4819_SetFrequency(tx_frequency);
 
 #ifdef ENABLE_CW_MODULATOR
-	if(gTxVfo->Modulation == MODULATION_CW)
+	if(gCurrentVfo->Modulation == MODULATION_CW)
 		BK4819_WriteRegister(BK4819_REG_31, 0);  // all off
 	else
 #endif
     // TX compressor
-    BK4819_SetCompander((gRxVfo->Modulation == MODULATION_FM && (gRxVfo->Compander == 1 || gRxVfo->Compander >= 3)) ? gRxVfo->Compander : 0);
+    BK4819_SetCompander((gCurrentVfo->Modulation == MODULATION_FM && (gCurrentVfo->Compander == 1 || gCurrentVfo->Compander >= 3)) ? gCurrentVfo->Compander : 0);
 
     BK4819_PrepareTransmit();
 
@@ -1174,7 +1173,7 @@ static void RADIO_SetTxParametersEx(bool fm)
 	/// Perhaps the transciever and PA really do need long delays to make these transitions correctly,
 	/// but in testing I haven't seen that to be the case. I'm leaving the original ones for non-CW anyway.
 
-	SYSTEM_DelayMs(gTxVfo->Modulation == MODULATION_CW ? 1 : 10);
+	SYSTEM_DelayMs(gCurrentVfo->Modulation == MODULATION_CW ? 1 : 10);
 #else
 	SYSTEM_DelayMs(10);
 #endif
@@ -1184,7 +1183,7 @@ static void RADIO_SetTxParametersEx(bool fm)
     BK4819_ToggleGpioOut(BK4819_GPIO1_PIN29_PA_ENABLE, fm);
 
 #ifdef ENABLE_CW_MODULATOR
-	SYSTEM_DelayMs(gTxVfo->Modulation == MODULATION_CW ? 1 : 5);
+	SYSTEM_DelayMs(gCurrentVfo->Modulation == MODULATION_CW ? 1 : 5);
 #else
     SYSTEM_DelayMs(5);
 #endif
@@ -1192,7 +1191,7 @@ static void RADIO_SetTxParametersEx(bool fm)
     BK4819_SetupPowerAmplifier(gCurrentVfo->TXP_CalculatedSetting, gCurrentVfo->pTX->Frequency);
 
 #ifdef ENABLE_CW_MODULATOR
-	SYSTEM_DelayMs(gTxVfo->Modulation == MODULATION_CW ? 1 : 10);
+	SYSTEM_DelayMs(gCurrentVfo->Modulation == MODULATION_CW ? 1 : 10);
 #else
     SYSTEM_DelayMs(10);
 #endif
@@ -1365,7 +1364,8 @@ void RADIO_SetVfoState(VfoState_t State)
         VfoState[1] = VFO_STATE_TX_DISABLE;
     } else {
         // 1of11
-        const unsigned int vfo = (gEeprom.CROSS_BAND_RX_TX == CROSS_BAND_OFF) ? gEeprom.RX_VFO : gEeprom.TX_VFO;
+        const unsigned int vfo = gEeprom.CROSS_BAND_RX_TX == CROSS_BAND_OFF
+            ? gEeprom.RX_VFO : gEeprom.CROSS_BAND_RX_TX - CROSS_BAND_CHAN_A;
         VfoState[vfo] = State;
     }
 
@@ -1541,9 +1541,9 @@ void RADIO_SendEndOfTransmission(void)
     const BK4819_FilterBandwidth_t Bandwidth = RADIO_ResolveFilter(gCurrentVfo);
 
 #ifdef ENABLE_CW_MODULATOR
-	if (gTxVfo->Modulation != MODULATION_CW && gTxVfo->Modulation != MODULATION_USB) {
+	if (gCurrentVfo->Modulation != MODULATION_CW && gCurrentVfo->Modulation != MODULATION_USB) {
 #else
-	if (gTxVfo->Modulation != MODULATION_USB) {
+	if (gCurrentVfo->Modulation != MODULATION_USB) {
 #endif
     BK4819_PlayRoger(Bandwidth);
     DTMF_SendEndOfTransmission();

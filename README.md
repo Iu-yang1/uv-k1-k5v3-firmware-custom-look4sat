@@ -1,12 +1,12 @@
-# Look4Sat L4S firmware 1.0.3 — F4HWN 6.3.0
+# Look4Sat L4S firmware 1.0.4 — F4HWN 6.3.0
 
-> **CW USB RX / CW TX and MAIN TX DUAL RX hardware-validation iteration.** [v1.0.3 release notes](docs/l4s-v1.0.3-release.md).
+> **CW USB RX / CW TX and MAIN TX DUAL RX hardware-validation iteration.** [v1.0.4 release notes](docs/l4s-v1.0.4-release.md).
 > UV-K1/UV-K5 V3 only; direct Type-C enumeration remains unverified on physical hardware.
 > Idle handset controls: F + long 7 restarts USB; F + long 6 tests an MCU reset.
 > Retains the v1.0.2 USB recovery features and existing API-4 module compatibility.
 
 
-[Download L4S v1.0.3 firmware](https://github.com/Iu-yang1/uv-k1-k5v3-firmware-custom-look4sat/releases/tag/l4s-v1.0.3)
+[Download L4S v1.0.4 firmware](https://github.com/Iu-yang1/uv-k1-k5v3-firmware-custom-look4sat/releases/tag/l4s-v1.0.4)
 
 Dedicated satellite/CW firmware for **UV-K1 / UV-K5 V3 (PY32F071)**.
 Not compatible with the original UV-K5. Based on F4HWN 6.3.0 (`3574e94`),
@@ -23,9 +23,11 @@ with NR7Y CW and L4S engines from Be-Galaxy (`f242b481`).
   legacy CW profiles and CW/CW requests sent by the phone. There is **no automatic
   600 Hz RX/BFO correction** in USB mode; tune RX independently as needed.
   Normal handset CW operation outside L4S is unchanged.
-- MAIN TX DUAL RX: PTT always transmits using the selected MAIN channel
-  (frequency, mode, power and tone), regardless of which dual-watch channel is
-  currently being received. Ordinary dual-watch talk-back remains unchanged.
+- MAIN TX DUAL RX: entering this mode anchors MAIN TX to the then-selected
+  A/B channel. F+2 can subsequently focus the other (SUB) channel for RX/editing
+  **without reassigning the MAIN TX anchor**. PTT uses the anchored MAIN
+  frequency, modulation, power and tone; the TX indicator stays on MAIN.
+  Normal Dual Watch (without MAIN TX lock) retains its talk-back behavior.
 - Full FM/AM audio presets and CW/USB receive configuration. CW/USB always monitor
   without changing saved squelch; FM/NFM retain squelch. In the Doppler MENU,
   `RX CW/USB` applies on confirmation; permanent saving still needs handset confirmation.
@@ -68,7 +70,7 @@ physical paddles, power-loss recovery or Multiboot hardware behavior.
 
 ## 中文
 
-**L4S 1.0.3 CW 收发及双守候修复迭代测试版，基于 F4HWN 6.3.0**，适用于 UV-K1／UV-K5 V3，
+**L4S 1.0.4 MAIN TX DUAL RX 锁定修复迭代测试版，基于 F4HWN 6.3.0**，适用于 UV-K1／UV-K5 V3，
 不适用于原版 UV-K5。保留完整 NR7Y CW、USB CAT、独立 RX/TX 多普勒、
 手机 PTT、56 组卫星档案和多固件／多配置切换。F1–F4 每槽 92 字符，
 同步与永久档案操作仍须手台确认；可读取旧八槽宏的前四槽。

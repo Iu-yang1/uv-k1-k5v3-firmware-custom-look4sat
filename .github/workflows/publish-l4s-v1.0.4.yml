@@ -1,0 +1,98 @@
+# L4S hardware-validation iteration. Fail closed on regression, image size, UF2, or asset validation.
+name: Publish L4S v1.0.4
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-l4s-v1.0.4.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: l4s-v1.0.4-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'Iu-yang1/uv-k1-k5v3-firmware-custom-look4sat' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: l4s-v1.0.4
+    steps:
+      - name: Checkout exact source commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Ensure this release tag does not already exist
+        run: |
+          if git show-ref --tags --verify --quiet "refs/tags/$TAG"; then
+            echo "::error::Release tag already exists; refusing to overwrite it."
+            exit 1
+          fi
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release already exists; refusing to overwrite assets."
+            exit 1
+          fi
+      - name: Build native L4S regression host library
+        run: |
+          mkdir -p build/host
+          gcc -std=c11 -Wall -Wextra -Werror -fPIC -shared -O2 \
+            -I App/app -I App \
+            App/app/l4s_protocol.c App/app/l4s_rssi.c App/app/l4s_io.c \
+            App/app/l4s_settings.c App/app/l4s_store.c App/app/l4s_macros.c \
+            tools/l4s/macros_host.c tools/l4s/store_host.c tools/l4s/io_host.c \
+            App/ui/l4s.c App/font.c App/external/printf/printf.c \
+            tools/l4s/display_host.c tools/l4s/host.c \
+            -o build/host/l4s_host.dll
+      - name: Verify CW and MAIN TX DUAL RX regressions
+        run: |
+          cd tools/l4s
+          python3 -m unittest -v test_protocol test_receive_audio test_dual_watch_tx
+      - name: Build L4S firmware and Fusion recovery image
+        run: |
+          chmod +x compile-firmware.sh
+          ./compile-firmware.sh L4S
+          ./compile-firmware.sh Fusion
+      - name: Verify UF2 payload, flash reserve, and package assets
+        run: |
+          python3 -m py_compile tools/l4s/package_usb_release.py
+          python3 tools/l4s/package_usb_release.py --tag "$TAG" --sha "$GITHUB_SHA" --out dist
+          cd dist
+          sha256sum --check SHA256SUMS.txt
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          info = json.loads(Path('verification.json').read_text(encoding='utf-8'))
+          assert info['flash_free_bytes'] >= info['minimum_flash_reserve_bytes']
+          assert info['source_commit'] == __import__('os').environ['GITHUB_SHA']
+          assert info['uf2_matches_bin'] is True
+          print('verified source:', info['source_commit'])
+          print('flash used/free:', info['flash_used_bytes'], info['flash_free_bytes'])
+          PY
+      - name: Archive verified release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: l4s-v1.0.4-verified-package
+          path: dist/
+          if-no-files-found: error
+      - name: Publish new GitHub hardware-validation pre-release
+        run: |
+          gh release create "$TAG" dist/* \
+            --target "$GITHUB_SHA" \
+            --title "Look4Sat L4S v1.0.4 — CW USB RX / MAIN TX DUAL RX fixes" \
+            --notes-file docs/l4s-v1.0.4-release.md \
+            --prerelease \
+            --repo "$GITHUB_REPOSITORY"
+      - name: Verify GitHub release and its uploaded files
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,isPrerelease,assets,url
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[].name' | sort > /tmp/release-assets.txt
+          find dist -maxdepth 1 -type f -printf '%f\n' | sort > /tmp/expected-assets.txt
+          diff -u /tmp/expected-assets.txt /tmp/release-assets.txt
+          echo "Verified published release assets."

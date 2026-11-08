@@ -28,6 +28,8 @@ void COMMON_SwitchVFOs()
 #ifdef ENABLE_SCAN_RANGES    
     gScanRangeStart = 0;
 #endif
+    // Cross-band mode stores MAIN TX as 1=A, 2=B. Only move that anchor
+    // when Dual Watch is off; with Dual Watch on, F+2 changes RX focus only.
     gEeprom.TX_VFO ^= 1;
 
     if (gInputBoxIndex > 0) {
@@ -35,14 +37,16 @@ void COMMON_SwitchVFOs()
         gHasVfoBackup = false;
     }
 
-    if (gEeprom.CROSS_BAND_RX_TX != CROSS_BAND_OFF)
-        gEeprom.CROSS_BAND_RX_TX = gEeprom.TX_VFO + 1;
-    if (gEeprom.DUAL_WATCH != DUAL_WATCH_OFF
+    if (gEeprom.CROSS_BAND_RX_TX != CROSS_BAND_OFF) {
+        if (gEeprom.DUAL_WATCH == DUAL_WATCH_OFF)
+            gEeprom.CROSS_BAND_RX_TX = gEeprom.TX_VFO + 1;
+    } else if (gEeprom.DUAL_WATCH != DUAL_WATCH_OFF
 #ifdef ENABLE_FEAT_F4HWN_FULL_WATCH
         && gEeprom.DUAL_WATCH != DUAL_WATCH_FULL
 #endif
-    )
+    ) {
         gEeprom.DUAL_WATCH = gEeprom.TX_VFO + 1;
+    }
 
     gRequestSaveSettings  = 1;
     gFlagReconfigureVfos  = true;

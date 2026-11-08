@@ -397,7 +397,7 @@ void ACTION_SwitchDemodul(void)
 #ifdef ENABLE_CW_MODULATOR
 	// Arm/dearm keyer ownership immediately so a very quick PTT press after
 	// switching to CW cannot beat deferred reconfigure/save paths.
-	CW_KeyerReconfigure(gTxVfo->Modulation == MODULATION_CW);
+	CW_KeyerReconfigure(gCurrentVfo->Modulation == MODULATION_CW);
 
 	// CW/USB default to monitor mode (open squelch); other modes start squelched.
 	gMonitor = (gTxVfo->Modulation == MODULATION_CW ||
@@ -698,7 +698,7 @@ void ACTION_FM(void)
 
 #ifdef ENABLE_CW_MODULATOR
             // Re-arm the keyer if we're returning to a CW channel.
-            CW_KeyerReconfigure(gTxVfo->Modulation == MODULATION_CW);
+            CW_KeyerReconfigure(gCurrentVfo->Modulation == MODULATION_CW);
 #endif
 
 #ifdef ENABLE_VOX

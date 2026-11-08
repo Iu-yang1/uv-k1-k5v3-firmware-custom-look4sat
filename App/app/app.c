@@ -999,7 +999,10 @@ static VFO_Info_t *FullWatchLoadPriority(uint8_t priority, uint16_t channel, con
 
 static uint8_t FullWatchReplacementVfo(void)
 {
-    return gEeprom.TX_VFO ^ (gEeprom.CROSS_BAND_RX_TX != CROSS_BAND_OFF);
+    // Never replace anchored MAIN with a FULL WATCH background priority slot.
+    return gEeprom.CROSS_BAND_RX_TX != CROSS_BAND_OFF
+        ? (gEeprom.CROSS_BAND_RX_TX - CROSS_BAND_CHAN_A) ^ 1u
+        : gEeprom.TX_VFO;
 }
 
 static void FullWatchInitialize(void)
@@ -1173,7 +1176,7 @@ static void CheckRadioInterrupts(void)
         return;
 
 	#ifdef ENABLE_CW_MODULATOR
-		if (gCW_CpoActive || CW_LocalSidetoneHeld() || ( gCurrentFunction == FUNCTION_TRANSMIT && gTxVfo->Modulation == MODULATION_CW))
+		if (gCW_CpoActive || CW_LocalSidetoneHeld() || ( gCurrentFunction == FUNCTION_TRANSMIT && gCurrentVfo->Modulation == MODULATION_CW))
 			return;  // no interrupts during CW TX, the local sidetone or CPO app
 	#endif
 
@@ -3028,7 +3031,7 @@ Skip:
         RADIO_SelectVfos();
 
 #ifdef ENABLE_CW_MODULATOR
-		CW_KeyerReconfigure(gTxVfo->Modulation==MODULATION_CW);
+		CW_KeyerReconfigure(gCurrentVfo->Modulation==MODULATION_CW);
 		gMonitor = (gRxVfo->Modulation == MODULATION_CW ||
 		            gRxVfo->Modulation == MODULATION_USB);
 #endif

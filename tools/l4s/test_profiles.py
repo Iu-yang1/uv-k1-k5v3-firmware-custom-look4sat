@@ -93,6 +93,27 @@ class ProfilesTest(unittest.TestCase):
         self.send(STOP);self.lib.Host_MenuOpen()
         self.assertEqual(4,self.send(PROFILE,payload)[5])
 
+    def test_100hz_profile_step_is_supported_and_preserves_explicit_250hz(self):
+        selected=self.select(bytes(range(16)))
+        generation=struct.unpack_from('<I',selected,12+74)[0]
+        def write_step(step):
+            return self.send(PROFILE,b'\\1'+struct.pack('<IIHI',435100000,145900000,step,generation))[5]
+        self.assertEqual(0,write_step(100))
+        self.lib.Host_MenuDraft.argtypes=[ctypes.POINTER(Config)]
+        self.lib.Host_MenuOpen()
+        for _ in range(10):self.lib.Host_MenuKey(12)
+        self.lib.Host_MenuKey(10)
+        self.lib.Host_MenuKey(11)
+        config=Config();self.lib.Host_MenuDraft(ctypes.byref(config))
+        self.assertEqual(435100100,config.rx_base_hz)
+        self.lib.Host_MenuKey(13)
+        self.assertEqual(0,write_step(250))
+        self.lib.Host_MenuOpen()
+        for _ in range(10):self.lib.Host_MenuKey(12)
+        self.lib.Host_MenuKey(10);self.lib.Host_MenuKey(11)
+        self.lib.Host_MenuDraft(ctypes.byref(config))
+        self.assertEqual(435100250,config.rx_base_hz)
+
     def test_menu_frequency_and_correction_extremes_fit_lcd(self):
         config=self.config(1300000000,1300000000)
         config.rx_correction_hz=-100000;config.tx_correction_hz=100000

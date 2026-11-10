@@ -144,7 +144,7 @@ static bool enter(void)
     state.saved_settings=profile;memset(state.saved_key,0,16);memset(state.context_key,0,16);
     if(state.saved_settings_valid) memcpy(state.saved_key,L4S_GetProfileKey(),16);
     state.user_modified=false;
-    state.profile_selected=false;state.step_hz=250;
+    state.profile_selected=false;state.step_hz=100;
     apply_user_config(&profile); state.settings=profile;
     state.rx_mode=gRxVfo->Modulation;
     state.tx_mode=gTxVfo->Modulation;

@@ -27,7 +27,7 @@ jobs:
       - name: Run CW mode and receive-audio regressions
         run: |
           cd tools/l4s
-          python3 -m unittest -v test_protocol test_receive_audio test_dual_watch_tx
+          python3 -m unittest -v test_protocol test_receive_audio test_dual_watch_tx test_profiles
 
   aislop-review:
     runs-on: ubuntu-latest

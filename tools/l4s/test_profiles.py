@@ -97,7 +97,7 @@ class ProfilesTest(unittest.TestCase):
         selected=self.select(bytes(range(16)))
         generation=struct.unpack_from('<I',selected,12+74)[0]
         def write_step(step):
-            return self.send(PROFILE,b'\\1'+struct.pack('<IIHI',435100000,145900000,step,generation))[5]
+            return self.send(PROFILE,b'\1'+struct.pack('<IIHI',435100000,145900000,step,generation))[5]
         self.assertEqual(0,write_step(100))
         self.lib.Host_MenuDraft.argtypes=[ctypes.POINTER(Config)]
         self.lib.Host_MenuOpen()

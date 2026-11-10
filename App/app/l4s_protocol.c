@@ -37,7 +37,7 @@ void L4S_Init(L4S_State *s, const L4S_Ops *ops)
     memset(s, 0, sizeof(*s)); s->ops = ops;
     s->rssi_dbm = L4S_RSSI_UNKNOWN;
     L4S_DefaultConfig(&s->settings);
-    s->step_hz=250;
+    s->step_hz=100;
     s->correction_step_hz=10;
 }
 
